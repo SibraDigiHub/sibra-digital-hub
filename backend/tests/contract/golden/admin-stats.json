@@ -1,0 +1,69 @@
+{
+  "status": 200,
+  "body": {
+    "kidsCount": "<num>",
+    "creatorCount": "<num>",
+    "publishedCount": "<num>",
+    "draftCount": "<num>",
+    "archivedCount": "<num>",
+    "instantCount": "<num>",
+    "orderCount": "<num>",
+    "paidOrderCount": "<num>",
+    "pendingCount": "<num>",
+    "customerCount": "<num>",
+    "paidRevenueInr": "<num>",
+    "revenueToday": "<num>",
+    "revenue7d": "<num>",
+    "revenue30d": "<num>",
+    "revenueUsdMinor": "<num>",
+    "revenueUsdTodayMinor": "<num>",
+    "revenueUsd30dMinor": "<num>",
+    "usdPaidOrderCount": "<num>",
+    "averageOrderValueInr": "<num>",
+    "failedEmailCount": "<num>",
+    "views24h": "<num>",
+    "alerts": [
+      "1 pending checkout(s) awaiting payment."
+    ],
+    "recentOrders": [
+      {
+        "id": "<id>",
+        "productId": "<id>",
+        "razorpayPaymentId": null,
+        "razorpayPaymentLinkId": null,
+        "razorpayOrderId": null,
+        "paymentMethod": null,
+        "paymentInternational": null,
+        "customerName": "Contract Fixture",
+        "customerEmail": "<email>",
+        "amountInr": "<num>",
+        "status": "pending",
+        "downloadTokenHash": null,
+        "tokenExpiresAt": null,
+        "downloadCount": "<num>",
+        "emailSent": false,
+        "visitorId": null,
+        "gateway": "razorpay",
+        "billingCountry": "IN",
+        "ipCountry": null,
+        "currency": "INR",
+        "amountMinor": "<num>",
+        "consentAt": null,
+        "paypalOrderId": null,
+        "paypalCaptureId": null,
+        "riskFlags": [],
+        "invoiceNumber": null,
+        "invoiceIssuedAt": null,
+        "createdAt": "<ts>",
+        "updatedAt": "<ts>",
+        "product": {
+          "title": "Viral Video Ingredient Prompts Pack",
+          "slug": "viral-video-ingredient-prompts",
+          "zone": "creator",
+          "instantDownload": true,
+          "deliverableName": "viral-video-prompts-pack.pdf"
+        }
+      }
+    ]
+  }
+}

@@ -1,0 +1,194 @@
+#!/usr/bin/env bash
+# ═══════════════════════════════════════════════════════════
+# ⚠️  SANDBOX-ONLY — DO NOT RUN ON A NORMAL MACHINE ⚠️
+#
+# This script serves ONLY the ephemeral cloud dev sandbox this repo was
+# built in: it hardcodes sandbox paths (/home/z/pg17, /home/z/pgdata), the
+# :81 preview gateway and the sandbox process model. On your own
+# Ubuntu/macOS/Windows machine follow docs/LOCAL_SETUP.md instead — same
+# steps, portable (system/Docker PostgreSQL, your own .env values).
+# All /home/z paths below are SANDBOX-ONLY.
+# ═══════════════════════════════════════════════════════════
+# ONE-COMMAND SELF-HEALING RECOVERY — run after ANY sandbox/machine restart.
+#
+# Why this exists: the sandbox periodically restarts and wipes
+#   • /home/z/pg17 (PostgreSQL binaries) + /home/z/pgdata (DB cluster)
+#   • node_modules (backend + frontend)
+#   • backend/.env + frontend/.env  (gitignored → not restored)
+# Tracked code always survives. Only the preview gateway is system-managed.
+#
+# This script is FULLY AUTONOMOUS — it re-provisions everything from
+# scratch with zero arguments and zero human decisions:
+#   deps → prisma client → PG binaries → PG start → migrate → .env
+#   → seed-if-empty → backend :3001 → frontend :3000 → health report.
+#
+# Usage:   bash scripts/sandbox/restore-dev.sh          # heal everything
+#          bash scripts/sandbox/restore-dev.sh --status # report only, change nothing
+# Safe to re-run anytime — every step is idempotent.
+# ═══════════════════════════════════════════════════════════
+set -uo pipefail
+ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
+cd "$ROOT"
+
+# SANDBOX-ONLY paths (exist only in the cloud sandbox workspace):
+PG_VER="17.2"
+PG_TARBALL_URL="https://github.com/theseus-rs/postgresql-binaries/releases/download/${PG_VER}/postgresql-${PG_VER}-x86_64-unknown-linux-gnu.tar.gz"
+PG_BIN="/home/z/pg17/bin"
+PGDATA="/home/z/pgdata"
+DB_NAME="sibra"
+DB_URL="postgresql://postgres@127.0.0.1:5432/${DB_NAME}"
+LOG_DIR="/tmp"
+STATUS_ONLY=0
+[ "${1:-}" = "--status" ] && STATUS_ONLY=1
+
+say() { printf '\n▸ %s\n' "$*"; }
+
+# ── single-instance lock (nested/parallel invocations are no-ops) ──
+if ! mkdir /tmp/sibra-restore.lock 2>/dev/null; then
+  echo "restore-dev.sh already running (lock: /tmp/sibra-restore.lock) — exiting."
+  exit 0
+fi
+trap 'rmdir /tmp/sibra-restore.lock 2>/dev/null' EXIT
+
+# ── 0. quick status report ─────────────────────────────────
+fe_code() { curl -s -o /dev/null -w '%{http_code}' --max-time 3 http://localhost:3000 2>/dev/null || true; }
+be_code() { curl -s -o /dev/null -w '%{http_code}' --max-time 3 http://localhost:3001/api 2>/dev/null || true; }
+
+if [ "$STATUS_ONLY" = "1" ]; then
+  echo "frontend :3000 → $(fe_code)   (200 = OK)"
+  echo "backend  :3001 → $(be_code)   (200 = OK)"
+  [ -x "$PG_BIN/pg_isready" ] && "$PG_BIN/pg_isready" -h 127.0.0.1 -p 5432 || echo "postgres: binaries missing"
+  [ -f backend/.env ] && echo "backend/.env: present" || echo "backend/.env: MISSING"
+  [ -f frontend/.env ] && echo "frontend/.env: present" || echo "frontend/.env: MISSING"
+  exit 0
+fi
+
+if [ "$(fe_code)" = "200" ] && [ "$(be_code)" != "000" ] && [ -f backend/.env ] && [ -f frontend/.env ]; then
+  echo "✅ Sab already up hain — kuch karne ki zaroorat nahi (frontend $(fe_code), backend $(be_code))."
+  exit 0
+fi
+
+# ── 1. dependencies (restarts wipe node_modules) ───────────
+if [ ! -d backend/node_modules ]; then say "bun install (backend)"; (cd backend && bun install) >> "$LOG_DIR/sibra-restore.log" 2>&1; fi
+if [ ! -d frontend/node_modules ]; then say "bun install (frontend)"; (cd frontend && bun install) >> "$LOG_DIR/sibra-restore.log" 2>&1; fi
+
+# ── 2. prisma client (needed after a fresh install) ────────
+if [ ! -d backend/node_modules/.prisma/client ]; then
+  say "prisma generate"
+  (cd backend && env -u DATABASE_URL bunx prisma generate) >> "$LOG_DIR/sibra-restore.log" 2>&1
+fi
+
+# ── 3. PostgreSQL binaries (wiped on restart → re-download) ─
+if [ ! -x "$PG_BIN/pg_ctl" ]; then
+  say "PostgreSQL ${PG_VER} binaries missing → downloading (one-time, ~1 min)"
+  curl -sL --max-time 300 -o /tmp/pg${PG_VER}.tar.gz "$PG_TARBALL_URL" \
+    && mkdir -p /home/z/pg17 \
+    && tar -xzf /tmp/pg${PG_VER}.tar.gz -C /home/z/pg17 --strip-components=1
+  [ -x "$PG_BIN/pg_ctl" ] || { echo "❌ PG download failed — net check karo ya manually: $PG_TARBALL_URL"; exit 1; }
+fi
+
+# ── 4. PostgreSQL start + DB create + migrate ───────────────
+say "PostgreSQL (start if down + migrate deploy)"
+bash backend/scripts/dev-db.sh >> "$LOG_DIR/sibra-restore.log" 2>&1 \
+  || { echo "❌ PostgreSQL failed — see $PGDATA/server.log"; exit 1; }
+
+# ── 5. .env files (gitignored → wiped on restart) ───────────
+gen_env() {
+  say ".env files missing → generating fresh dev secrets"
+  local KEY PEPPER CRON
+  KEY=$(openssl rand -base64 32)
+  PEPPER=$(openssl rand -base64 32)
+  CRON=$(openssl rand -base64 24)
+  cat > backend/.env <<ENVEOF
+# Sibra Digital Hub — backend DEV environment (auto-generated by scripts/sandbox/restore-dev.sh)
+# Local PostgreSQL only. Secrets are dev-only fresh values.
+
+DATABASE_URL="${DB_URL}"
+DIRECT_URL="${DB_URL}"
+
+ENCRYPTION_KEY="${KEY}"
+SESSION_PEPPER="${PEPPER}"
+ADMIN_REQUIRE_2FA="false"
+ADMIN_PASSKEYS_ENABLED="true"
+ADMIN_WEBAUTHN_RP_ID="localhost"
+ADMIN_WEBAUTHN_ORIGIN="http://localhost:3000"
+INTERNAL_API_KEY="${KEY}"
+CRON_SECRET="${CRON}"
+DEMO_MODE="true"
+PUBLIC_WEB_URL="http://localhost:3000"
+DOWNLOAD_TTL_HOURS="48"
+DOWNLOAD_MAX_DEFAULT="5"
+# P-series payments suite requirements (tests sign webhooks + assert the
+# international-card block + need an alert recipient):
+RAZORPAY_WEBHOOK_SECRET="test-webhook-secret-local"
+RAZORPAY_BLOCK_INTERNATIONAL_CARDS="true"
+PAYMENT_ALERT_EMAIL="dev-alerts@sibra.local"
+
+# NOTE: unset optional vars are intentionally ABSENT (not empty strings) —
+# zod .optional() enums reject "" (RAZORPAY_MODE gotcha, see worklog).
+# No Razorpay/PayPal/Resend/ImageKit keys → demo mode, console email driver.
+ENVEOF
+  cat > frontend/.env <<ENVEOF
+# Sibra Digital Hub — frontend DEV environment (auto-generated by scripts/sandbox/restore-dev.sh)
+
+BACKEND_URL="http://127.0.0.1:3001"
+INTERNAL_API_KEY="${KEY}"
+NEXT_PUBLIC_SITE_URL="http://localhost:3000"
+ENVEOF
+}
+if [ ! -f backend/.env ] || [ ! -f frontend/.env ]; then gen_env; fi
+
+# ── 6. seed IF database is empty (idempotent, demo only) ────
+PROD_COUNT=""
+if [ -x "$PG_BIN/psql" ]; then
+  PROD_COUNT=$("$PG_BIN/psql" -h 127.0.0.1 -p 5432 -U postgres -d "$DB_NAME" -tAc 'SELECT count(*) FROM "Product"' 2>/dev/null || echo "ERR")
+fi
+if [ "$PROD_COUNT" = "ERR" ] || [ -z "$PROD_COUNT" ]; then
+  say "schema missing → migrate deploy"
+  (cd backend && env -u DATABASE_URL DATABASE_URL="$DB_URL" DIRECT_URL="$DB_URL" bunx prisma migrate deploy) >> "$LOG_DIR/sibra-restore.log" 2>&1
+  PROD_COUNT=0
+fi
+if [ "$PROD_COUNT" = "0" ]; then
+  say "database empty → demo seed (24 products)"
+  (cd backend && env -u DATABASE_URL DATABASE_URL="$DB_URL" DIRECT_URL="$DB_URL" SEED_DEMO=true bun prisma/seed.ts) >> "$LOG_DIR/sibra-restore.log" 2>&1
+fi
+
+# ── 7. backend dev server (:3001) ───────────────────────────
+# NOTE: the sandbox injects a stale DATABASE_URL=file:... into the shell
+# environment which OVERRIDES .env files — the pinned env here is REQUIRED.
+if [ "$(be_code)" = "000" ]; then
+  say "start backend :3001 (pinned PostgreSQL env)"
+  ( cd backend && setsid nohup bash -c "DATABASE_URL='${DB_URL}' DIRECT_URL='${DB_URL}' bun run dev" \
+      > "$LOG_DIR/be.log" 2>&1 < /dev/null & )
+else
+  say "backend already responding (:3001)"
+fi
+
+# ── 8. frontend dev server (:3000) ──────────────────────────
+if [ "$(fe_code)" != "200" ]; then
+  say "start frontend :3000"
+  ( cd frontend && setsid nohup bun run dev > "$LOG_DIR/fe.log" 2>&1 < /dev/null & )
+else
+  say "frontend already up (:3000)"
+fi
+
+# ── 9. wait for both, then report ───────────────────────────
+for _ in $(seq 1 30); do
+  [ "$(fe_code)" = "200" ] && [ "$(be_code)" != "000" ] && break
+  sleep 2.5
+done
+FE=$(fe_code); BE=$(be_code); GW=$(curl -s -o /dev/null -w '%{http_code}' --max-time 3 http://localhost:81/ 2>/dev/null || true)
+
+say "status"
+echo "  frontend :3000 → ${FE}   (200 = OK)"
+echo "  backend  :3001 → ${BE}   (200 = OK)"
+echo "  gateway  :81   → ${GW}   (200 = preview path OK)"
+if [ "$FE" = "200" ] && [ "$BE" != "000" ]; then
+  echo ""
+  echo "✅ Sab chalu hain — Preview Panel refresh karo (ya 'Open in New Tab')."
+else
+  echo ""
+  echo "❌ Abhi tak ready nahi — 30 second baad dobara chalao: bash scripts/sandbox/restore-dev.sh"
+  echo "   Logs: $LOG_DIR/be.log, $LOG_DIR/fe.log, $LOG_DIR/sibra-restore.log"
+  exit 1
+fi

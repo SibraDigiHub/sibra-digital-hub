@@ -1,0 +1,552 @@
+// Sibra Digital Hub — Marketplace Schema (Prisma + PostgreSQL)
+// Products / Orders (instant delivery) / Reviews / FAQ / Site Settings
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL") // pooled connection (Neon pgbouncer in production)
+  directUrl = env("DIRECT_URL") // direct connection — migrations need it
+}
+
+// ─────────────────────────────────────────────
+// PRODUCTS (Zone A: kids · Zone B: creator)
+// ─────────────────────────────────────────────
+model Product {
+  id                String   @id @default(cuid())
+  title             String
+  slug              String   @unique
+  zone              String   @default("kids") // 'kids' | 'creator'
+  category          String   @default("coloring-books")
+  authorBrand       String   @default("Professor Sibra Naaz")
+  ageOrLevel        String?
+  priceUsd          Float    @default(4.99)
+  priceInr          Float    @default(399)
+  badge             String   @default("New")
+  description       String   @default("")
+  // Detail-page tabs
+  whatsInside       String   @default("[]") // JSON string[] bullets
+  howToUse          String   @default("")
+  license           String   @default("personal") // 'personal' | 'commercial' | 'extended'
+  // Media
+  mediaType         String   @default("images") // 'images' | 'video'
+  images            String   @default("[]") // JSON string[] (ImageKit / hosted URLs)
+  videoPreviewUrl   String?
+  // Checkout links — admin decides per product which are visible
+  internationalLink String? // Gumroad / Payhip (USD)
+  indiaLink         String? // Razorpay UPI (INR)
+  platformLinks     String   @default("[]") // JSON [{ platform, url }] → Amazon KDP, Notion Press, Etsy, Payhip, Pothi, Gumroad, custom
+  instantDownload   Boolean  @default(false) // ⚡ auto-delivery via email after UPI payment
+  deliverableUrl    String? // private file URL (PDF/ZIP) delivered by email
+  deliverableName   String?
+  // Meta
+  featured          Boolean  @default(false)
+  sortOrder         Int      @default(0)
+  status            String   @default("published") // 'draft' | 'published' | 'archived' (trash)
+  tags              String   @default("[]") // JSON string[]
+  fileFormats       String   @default("[]") // JSON string[] e.g. ["PDF","PNG"]
+  pageCount         Int?
+  spatialCoords     String   @default("{}") // JSON {x,y,z}
+  // Dual-payment USD price note: Product.priceUsd (Float, above) IS the
+  // admin-managed USD price the PayPal flow bills (minor units are derived
+  // server-side as round(priceUsd*100) — see services/gateway-routing.ts).
+  // No separate priceUsdMinor column (DECISIONS.md #7).
+  // ── Video delivery (T-V: additive — existing products behave exactly as before) ──
+  // deliveryMode: 'file' | 'external' | 'watch'
+  //   file/external → the pre-existing email-download flow (deliverableUrl)
+  //   watch         → buyer receives a protected on-site watch page link
+  deliveryMode      String   @default("file")
+  // watch mode only — the FULL video's YouTube UNLISTED link. Server-private:
+  // never included in any public/admin-list DTO, only the embed URL built from
+  // its video id leaves the server AFTER a grant check (see watch-service).
+  fullVideoUrl      String?
+  // watch access window in hours (null → env DOWNLOAD_TTL_HOURS default)
+  watchTtlHours     Int?
+  // how many devices may watch at the same time
+  watchMaxConcurrent Int    @default(2)
+  orders            Order[]
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  @@index([zone])
+  @@index([category])
+  @@index([featured])
+  @@index([sortOrder])
+  @@index([status])
+  @@index([zone, status])
+}
+
+// ─────────────────────────────────────────────
+// ORDERS (instant-download pipeline)
+// ─────────────────────────────────────────────
+model Order {
+  id                    String    @id @default(cuid())
+  productId             String
+  product               Product   @relation(fields: [productId], references: [id])
+  razorpayPaymentId     String?   @unique
+  razorpayPaymentLinkId String? // legacy Payment Links flow — historical rows stay readable, no new links are created
+  // ── Razorpay Orders API + Standard Checkout (single-gateway migration, additive) ──
+  razorpayOrderId       String?   @unique // Razorpay Order id (order_…) created for Standard Checkout
+  paymentMethod         String? // gateway-reported method at fulfilment (upi | card | netbanking | paypal | …)
+  paymentInternational  Boolean? // gateway-reported international flag at fulfilment
+  customerName          String
+  customerEmail         String
+  amountInr             Float
+  status                String    @default("pending") // 'pending' | 'paid' | 'failed' | 'revoked' | 'refunded'
+  downloadTokenHash     String?   @unique // SHA-256 of token (plain token never stored)
+  tokenExpiresAt        DateTime?
+  downloadCount         Int       @default(0)
+  emailSent             Boolean   @default(false)
+  visitorId             String? // anonymous visitor cookie — links the customer's browsing timeline
+  // ── Dual payment (additive — existing rows default to the Razorpay/INR behaviour) ──
+  // gateway: 'razorpay' | 'paypal' — 'paypal' is LEGACY ONLY (independent PayPal
+  // integration removed; historical PayPal rows remain readable in admin).
+  gateway               String    @default("razorpay") // 'razorpay' | 'paypal' (legacy)
+  billingCountry        String? // customer-confirmed ISO-3166 alpha-2 (decides the gateway server-side)
+  ipCountry             String? // geo-IP hint only (never gates) — mismatch lands in riskFlags
+  currency              String    @default("INR") // 'INR' | configured foreign currency — money is billed in exactly this currency
+  amountMinor           Int? // integer minor units (paise/cents) — the authoritative billed amount
+  consentAt             DateTime? // when the customer confirmed country + terms (checkout v2; legacy rows null)
+  paypalOrderId         String?   @unique // PayPal Orders v2 id (PAYPAL gateway only)
+  paypalCaptureId       String?   @unique // capture id stored at fulfillment (audit/reconcile)
+  riskFlags             String[]  @default([]) // COUNTRY_MISMATCH | INTERNATIONAL_CARD_ON_IN_ORDER | INTERNATIONAL_CARD_BLOCKED | DISPUTED | PAID_BUT_NOT_DELIVERED | GATEWAY_SESSION_UNSTORED
+  // ── Invoice (additive — buyer/admin PDF invoice; NULL until first download) ──
+  invoiceNumber         String?   @unique // immutable reference, issued lazily: SDH-<year>-<seq>
+  invoiceIssuedAt       DateTime? // when the invoice number was first issued
+  watchGrants           WatchGrant[] // watch-mode delivery (0..1 per order — unique orderId)
+  attempts              PaymentAttempt[]
+  outbox                EmailOutbox[]
+  createdAt             DateTime  @default(now())
+  updatedAt             DateTime  @updatedAt
+
+  @@index([customerEmail])
+  @@index([status])
+  @@index([visitorId])
+  @@index([createdAt])
+  @@index([productId, createdAt])
+  @@index([status, createdAt]) // reconcile cron: pending windows by age
+  @@index([gateway, status, createdAt])
+}
+
+// ─────────────────────────────────────────────
+// ACTIVITY EVENTS (customer & product analytics)
+// Powers Admin → Activity funnel, top products,
+// platform click share and customer timelines.
+// ─────────────────────────────────────────────
+model ActivityEvent {
+  id        String   @id @default(cuid())
+  type      String // product_view | buy_click | platform_click | checkout_started | order_paid | download | email_resent | search
+  productId String?
+  zone      String?
+  platform  String?
+  email     String?
+  orderId   String?
+  visitorId String?
+  path      String?
+  referrer  String?
+  country   String?
+  device    String? // mobile | tablet | desktop | bot
+  meta      String   @default("{}") // JSON extras (e.g. { q, url })
+  createdAt DateTime @default(now())
+
+  @@index([type])
+  @@index([productId])
+  @@index([email])
+  @@index([visitorId])
+  @@index([createdAt])
+  // Hot admin/dashboard sorts use (createdAt DESC, id ASC) and
+  // (productId + createdAt DESC) — composite indexes keep them on index scans.
+  @@index([createdAt(sort: Desc), id])
+  @@index([productId, createdAt(sort: Desc)])
+}
+
+// ─────────────────────────────────────────────
+// AUDIT LOG (admin actions — who changed what)
+// ─────────────────────────────────────────────
+model AuditLog {
+  id        String   @id @default(cuid())
+  adminId   String?  // T4 security events — acting admin (null for public events); no FK by design (rows must survive admin deletion)
+  action    String // product.create | product.update | auth.login | ...
+  entity    String // product | order | settings | customer | admin | session
+  entityId  String?
+  label     String? // human-readable (product title, masked email…)
+  diff      String? // JSON summary of changed fields
+  ip        String? // legacy raw IP (kept for audit continuity; see ipHash)
+  ipHash    String? // salted hash (SESSION_PEPPER) — used by all T4 auth rows
+  meta      Json?    // structured security-event metadata (never secrets)
+  createdAt DateTime @default(now())
+
+  @@index([entity])
+  @@index([createdAt])
+  @@index([action, createdAt])
+  @@index([adminId])
+}
+
+// ─────────────────────────────────────────────
+// REVIEWS (owner-managed testimonials)
+// ─────────────────────────────────────────────
+model Review {
+  id          String   @id @default(cuid())
+  name        String
+  role        String   @default("Parent")
+  avatarEmoji String   @default("🌟")
+  content     String
+  rating      Int      @default(5)
+  zone        String   @default("kids") // 'kids' | 'creator'
+  verified    Boolean  @default(true)
+  sortOrder   Int      @default(0)
+  createdAt   DateTime @default(now())
+}
+
+// ─────────────────────────────────────────────
+// PRODUCT REVIEWS (Layer 2 — verified-purchase reviews)
+// One per PAID order (unique orderId — the review token IS the
+// order's download token, sha256-hashed at rest like every token).
+// Moderated: 'pending' → 'approved' | 'rejected'; only approved
+// rows are ever public. No FK by design (same rule as
+// ActivityEvent/AuditLog): rows must survive product purge and
+// order lifecycle edits without touching those flows.
+// ─────────────────────────────────────────────
+model ProductReview {
+  id        String   @id @default(cuid())
+  orderId   String   @unique
+  productId String
+  name      String
+  rating    Int // 1..5
+  text      String   @default("")
+  status    String   @default("pending") // 'pending' | 'approved' | 'rejected'
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([productId, status])
+  @@index([status, createdAt(sort: Desc)])
+}
+
+// ─────────────────────────────────────────────
+// FAQ
+// ─────────────────────────────────────────────
+model FaqItem {
+  id        String   @id @default(cuid())
+  question  String
+  answer    String
+  sortOrder Int      @default(0)
+  createdAt DateTime @default(now())
+}
+
+// ─────────────────────────────────────────────
+// SITE SETTINGS (key-value, editable from admin)
+// ─────────────────────────────────────────────
+model SiteSetting {
+  key       String   @id
+  value     String
+  updatedAt DateTime @updatedAt
+}
+
+// ─────────────────────────────────────────────
+// ADMIN AUTH (T4) — strongest admin authentication.
+// Passwords (argon2id), TOTP, passkeys, recovery codes,
+// server-side sessions and a Postgres-backed rate limiter.
+// All tokens/codes stored ONLY as hashes; IPs and user
+// agents ONLY as salted hashes (SESSION_PEPPER).
+// ─────────────────────────────────────────────
+model AdminUser {
+  id                 String    @id @default(cuid())
+  email              String    @unique // always lowercase
+  name               String    @default("Admin")
+  passwordHash       String // argon2id PHC string (self-describing params)
+  passwordChangedAt  DateTime?
+  totpSecretEnc      String? // AES-256-GCM ciphertext: v1.<iv>.<ct>.<tag> (base64url)
+  totpEnabled        Boolean   @default(false)
+  lastTotpStep       BigInt? // replay protection — reject step <= this
+  recoveryCodeHashes String[] // HMAC-SHA256(SESSION_PEPPER, code); never the code itself
+  failedLogins       Int       @default(0) // consecutive failed passwords
+  lockedUntil        DateTime?
+  lastLoginAt        DateTime?
+  createdAt          DateTime  @default(now())
+
+  sessions       AdminSession[]
+  passwordResets AdminPasswordReset[]
+  passkeys       AdminPasskey[]
+}
+
+model AdminSession {
+  id         String    @id @default(cuid())
+  adminId    String
+  admin      AdminUser @relation(fields: [adminId], references: [id], onDelete: Cascade)
+  tokenHash  String    @unique // sha256 hex of the opaque 32-byte session token
+  csrfHash   String // sha256 hex of the CSRF token handed to the client
+  stage      String    @default("FULL") // PENDING_2FA | ENROLL | FULL
+  ipHash      String?   // HMAC(SESSION_PEPPER, ip)
+  uaHash      String?   // HMAC(SESSION_PEPPER, user-agent) — soft binding
+  deviceLabel String?   // human-readable device label derived from the UA (T4 sessions page)
+  stepUpAt    DateTime? // last successful step-up auth — sensitive ops need ≤10 min freshness
+  createdAt   DateTime  @default(now())
+  lastSeenAt  DateTime  @default(now()) // sliding idle window (60 min)
+  expiresAt   DateTime  // absolute lifetime (12 h)
+  revokedAt   DateTime?
+
+  @@index([adminId])
+  @@index([expiresAt])
+}
+
+model AdminPasswordReset {
+  id            String    @id @default(cuid())
+  adminId       String
+  admin         AdminUser @relation(fields: [adminId], references: [id], onDelete: Cascade)
+  tokenHash     String    @unique // sha256 hex of the reset token
+  expiresAt     DateTime // ADMIN_RESET_TTL_MINUTES
+  usedAt        DateTime?
+  createdAt     DateTime  @default(now())
+  requestIpHash String?
+
+  @@index([adminId])
+}
+
+model AdminPasskey {
+  id           String    @id @default(cuid())
+  adminId      String
+  admin        AdminUser @relation(fields: [adminId], references: [id], onDelete: Cascade)
+  credentialId String    @unique // base64url credential id
+  publicKey    Bytes // COSE public key
+  counter      BigInt    @default(0) // monotonic signature counter
+  transports   String[]
+  deviceType   String    @default("singleDevice") // singleDevice | multiDevice
+  backedUp     Boolean   @default(false)
+  name         String    @default("Passkey")
+  createdAt    DateTime  @default(now())
+  lastUsedAt   DateTime?
+
+  @@index([adminId])
+}
+
+model AdminWebauthnChallenge {
+  id        String    @id @default(cuid())
+  adminId   String?
+  challenge String    @unique // single-use, 5-minute TTL
+  purpose   String // REGISTER | LOGIN
+  expiresAt DateTime
+  usedAt    DateTime?
+
+  @@index([adminId])
+}
+
+// Postgres-backed rate limiting (atomic upsert) — never in process memory.
+model RateLimit {
+  key     String   @id // e.g. login:ip:<hmac> | fp:em:<hmac>
+  count   Int      @default(0)
+  resetAt DateTime
+
+  @@index([resetAt])
+}
+
+// ─────────────────────────────────────────────
+// EMAIL LOG (T6) — every email send attempt
+// (ok or error) is recorded here for observability.
+// Privacy: recipients are stored ONLY as a sha256
+// hash (toHash) and a masked form (toMasked) —
+// never the raw address. One row per attempt
+// (attempt 1..3 for retried sends).
+// ─────────────────────────────────────────────
+model EmailLog {
+  id        String   @id @default(cuid())
+  toHash    String? // sha256 of the lowercase recipient address
+  toMasked  String // masked recipient (ab***@domain)
+  subject   String
+  template  String? // delivery | security-alert | …
+  orderId   String?
+  provider  String // resend | console
+  ok        Boolean // true = the provider accepted the send
+  error     String?
+  attempt   Int // 1-based attempt number
+  createdAt DateTime @default(now())
+
+  @@index([createdAt])
+  @@index([orderId])
+  @@index([toHash])
+}
+
+// ─────────────────────────────────────────────
+// WEBHOOK EVENTS (T5) — Razorpay webhook idempotency.
+// Every incoming webhook records its event id here FIRST
+// (insert-first: the unique index decides processed vs duplicate).
+// Duplicate deliveries are answered 200 without any side effects.
+// ─────────────────────────────────────────────
+model WebhookEvent {
+  id          String   @id @default(cuid())
+  eventId     String   @unique // X-Razorpay-Event-Id, else sha256 of the raw body; PayPal: transmission id
+  gateway     String   @default("razorpay") // 'razorpay' | 'paypal'
+  type        String // payment.captured | payment_link.paid | PAYMENT.CAPTURE.COMPLETED | …
+  processedAt DateTime @default(now())
+  result      String? // fulfilled | duplicate | ignored | unmatched | amount_mismatch | order_not_fulfillable
+
+  @@index([type, processedAt])
+  // Spec (§4) asks for unique (gateway, eventId); the pre-existing eventId
+  // unique is strictly stronger (gateway event ids are distinct namespaces)
+  // and stays — dropping it would be a non-additive migration.
+  @@unique([gateway, eventId])
+}
+
+// ─────────────────────────────────────────────
+// CRON HEARTBEATS (P4) — last successful run of each
+// payments cron. Surfaced in Admin → System with a
+// 30-min staleness warning; a >2 h reconcile gap
+// raises one suppressed admin alert e-mail.
+// ─────────────────────────────────────────────
+model CronHeartbeat {
+  key           String    @id // 'reconcile-payments' | 'retry-emails'
+  lastSuccessAt DateTime // last run that completed its sweep without throwing
+  staleAlertedAt DateTime? // last time the >2 h reconcile-gap alert fired (suppresses repeats)
+  updatedAt     DateTime  @updatedAt
+}
+
+// ─────────────────────────────────────────────
+// PAYMENT ATTEMPTS (dual payment) — audit + retry
+// history for every gateway interaction. No card
+// data is ever stored here (hosted components only).
+// ─────────────────────────────────────────────
+model PaymentAttempt {
+  id             String   @id @default(cuid())
+  orderId        String
+  order          Order    @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  gateway        String // 'razorpay' | 'paypal'
+  gatewayOrderId String? // razorpay payment-link id / paypal order id
+  status         String   @default("CREATED") // CREATED | APPROVED | CAPTURED | FAILED | CANCELLED | PENDING_REVIEW
+  errorCode      String? // stable error code (never gateway internals/secrets)
+  createdAt      DateTime @default(now())
+
+  @@index([orderId, createdAt])
+  @@index([gateway, status])
+}
+
+// ─────────────────────────────────────────────
+// IDEMPOTENCY KEYS (dual payment) — POST /api/checkout/create
+// requires an Idempotency-Key header; repeat keys replay the
+// stored response (double clicks, network retries). TTL 24 h,
+// pruned by the reconcile cron.
+// ─────────────────────────────────────────────
+model IdempotencyKey {
+  key          String   @id
+  requestHash  String // sha256(method + path + body) — collision guard
+  responseJson String // the exact stored response body
+  createdAt    DateTime @default(now())
+
+  @@index([createdAt]) // TTL cleanup
+}
+
+// ─────────────────────────────────────────────
+// EMAIL OUTBOX (dual payment) — exactly one delivery email per
+// order: the row is inserted INSIDE the fulfillment transaction,
+// sending happens after commit, and the retry cron re-sends
+// PENDING/FAILED rows (fresh token, same pattern as the admin
+// resend action). unique (orderId, template).
+// ─────────────────────────────────────────────
+model EmailOutbox {
+  id            String    @id @default(cuid())
+  orderId       String
+  order         Order     @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  template      String // 'delivery' | 'watch_delivery'
+  status        String    @default("PENDING") // PENDING | SENT | FAILED
+  attempts      Int       @default(0)
+  nextAttemptAt DateTime  @default(now())
+  lastError     String?
+  sentAt        DateTime?
+  createdAt     DateTime  @default(now())
+
+  @@unique([orderId, template])
+  @@index([status, nextAttemptAt])
+}
+
+// ─────────────────────────────────────────────
+// CATEGORIES (T10) — admin-managed product categories.
+// Replaces the hardcoded storefront lists: admins create,
+// rename, reorder, hide and delete categories from the
+// Admin Panel and every consumer (chips, forms, journey
+// slider, labels) picks them up dynamically. Product.category
+// stays a plain indexed string — the slug here is the join key.
+// Built-in defaults are seeded so behaviour is unchanged.
+// ─────────────────────────────────────────────
+model Category {
+  id        String   @id @default(cuid())
+  zone      String   @default("kids") // 'kids' | 'creator'
+  slug      String   @unique // stable identifier — immutable after create
+  label     String // display name (e.g. "Canva Templates")
+  emoji     String   @default("📦")
+  blurb     String   @default("")
+  sortOrder Int      @default(0) // display order within the zone
+  active    Boolean  @default(true) // false → hidden from storefront, products untouched
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([zone, sortOrder])
+  @@index([active])
+}
+
+// ─────────────────────────────────────────────
+// SOCIAL MEDIA CHANNELS (T-V Feature A) — admin-managed,
+// zone-scoped directory. No embeds ever: the card shows
+// only our own logo + a plain external link to the platform.
+// URLs are whitelist-validated server-side per platform
+// (youtube.com / instagram.com / pinterest.com / facebook.com families).
+// ─────────────────────────────────────────────
+model Channel {
+  id          String   @id @default(cuid())
+  zone        String   @default("kids") // 'kids' | 'creator' — a channel shows ONLY in its zone
+  platform    String   @default("youtube") // 'youtube' | 'instagram' | 'pinterest' | 'facebook' — which social network this link points to
+  name        String // display name (e.g. "Sibra Kids & Buddy")
+  url         String // social page URL (platform whitelist-enforced on write)
+  handle      String? // optional @handle shown on the card
+  logo        String? // uploaded logo (ImageKit / hosted URL) — our own asset, never an embed
+  description String? @db.VarChar(120) // short description (≤120 chars, enforced by validator)
+  audienceTag String? // optional audience note (e.g. "Ages 2–6")
+  buttonText  String   @default("Subscribe") // CTA label
+  sortOrder   Int      @default(0) // display order within the zone
+  enabled     Boolean  @default(true) // false → hidden everywhere, data kept
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([zone, enabled, sortOrder])
+}
+
+// ─────────────────────────────────────────────
+// WATCH GRANTS (T-V Feature C) — protected watch-page
+// access for watch-mode orders. One grant per order.
+// Only the SHA-256 of the token is stored; the plain token
+// exists solely in the delivery email / demo thank-you.
+// ─────────────────────────────────────────────
+model WatchGrant {
+  id            String    @id @default(cuid())
+  orderId       String    @unique // 1:1 with the paid order
+  order         Order     @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  tokenHash     String    @unique // sha256 of the watch token (never the token)
+  expiresAt     DateTime // watchTtlHours (product) or env DOWNLOAD_TTL_HOURS
+  revokedAt     DateTime? // admin action — permanent, buyer sees the renewal message
+  lockedAt      DateTime? // auto sharing-lock (too many distinct networks)
+  lockReason    String? // e.g. "shared_networks:6/24h"
+  maxConcurrent Int       @default(2) // snapshot of product.watchMaxConcurrent at fulfillment
+  preview       Boolean   @default(false) // admin "Preview as buyer" grants (short TTL)
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  sessions WatchSession[]
+
+  @@index([orderId])
+}
+
+// Viewing sessions — powers the concurrent-viewer cap and the
+// share-detection network count. Privacy: networks and user agents
+// are stored ONLY as salted hashes (SESSION_PEPPER), never raw.
+model WatchSession {
+  id          String     @id @default(cuid())
+  grantId     String
+  grant       WatchGrant @relation(fields: [grantId], references: [id], onDelete: Cascade)
+  sessionId   String     @unique // client-generated UUID persisted per browser (sessionStorage)
+  networkHash String // HMAC(SESSION_PEPPER, ip network prefix) — share detection
+  uaHash      String // HMAC(SESSION_PEPPER, user-agent)
+  lastSeenAt  DateTime   @default(now()) // heartbeat-updated (active = seen < 90s ago)
+  createdAt   DateTime   @default(now())
+
+  @@index([grantId, lastSeenAt])
+  @@index([createdAt])
+}

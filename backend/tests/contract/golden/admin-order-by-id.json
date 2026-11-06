@@ -1,0 +1,45 @@
+{
+  "status": 200,
+  "body": {
+    "order": {
+      "id": "<id>",
+      "productId": "<id>",
+      "razorpayPaymentId": null,
+      "razorpayPaymentLinkId": null,
+      "razorpayOrderId": null,
+      "paymentMethod": null,
+      "paymentInternational": null,
+      "customerName": "Contract Fixture",
+      "customerEmail": "<email>",
+      "amountInr": 449,
+      "status": "pending",
+      "downloadTokenHash": null,
+      "tokenExpiresAt": null,
+      "downloadCount": 0,
+      "emailSent": false,
+      "visitorId": null,
+      "gateway": "razorpay",
+      "billingCountry": "IN",
+      "ipCountry": null,
+      "currency": "INR",
+      "amountMinor": 44900,
+      "consentAt": null,
+      "paypalOrderId": null,
+      "paypalCaptureId": null,
+      "riskFlags": [],
+      "invoiceNumber": null,
+      "invoiceIssuedAt": null,
+      "createdAt": "<ts>",
+      "updatedAt": "<ts>",
+      "product": {
+        "title": "Viral Video Ingredient Prompts Pack",
+        "slug": "viral-video-ingredient-prompts",
+        "zone": "creator",
+        "instantDownload": true,
+        "deliverableName": "viral-video-prompts-pack.pdf",
+        "deliveryMode": "file"
+      }
+    },
+    "events": []
+  }
+}

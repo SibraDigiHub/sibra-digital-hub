@@ -1,0 +1,20 @@
+{
+  "status": 200,
+  "body": {
+    "logs": [
+      [
+        "action",
+        "adminId",
+        "createdAt",
+        "diff",
+        "entity",
+        "entityId",
+        "id",
+        "ip",
+        "ipHash",
+        "label",
+        "meta"
+      ]
+    ]
+  }
+}

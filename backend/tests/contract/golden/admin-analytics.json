@@ -1,0 +1,27 @@
+{
+  "status": 200,
+  "body": {
+    "windowDays": "number",
+    "funnel": {
+      "productViews": "number",
+      "buyClicks": "number",
+      "checkoutStarts": "number",
+      "paidOrders": "number",
+      "downloads": "number",
+      "conversionPct": "number"
+    },
+    "revenue": {
+      "today": "number",
+      "last7d": "number",
+      "last30d": "number",
+      "total": "number",
+      "series": "array"
+    },
+    "uniqueVisitors": "number",
+    "topProducts": "array",
+    "platformShare": "array",
+    "deviceSplit": "array",
+    "countries": "array",
+    "recentEvents": "array"
+  }
+}

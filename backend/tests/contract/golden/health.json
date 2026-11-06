@@ -1,0 +1,9 @@
+{
+  "status": 200,
+  "body": {
+    "ok": true,
+    "db": true,
+    "demoMode": true,
+    "testPaymentsAllowed": false
+  }
+}

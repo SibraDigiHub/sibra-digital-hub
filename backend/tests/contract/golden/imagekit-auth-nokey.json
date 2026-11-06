@@ -1,0 +1,7 @@
+{
+  "status": 501,
+  "body": {
+    "fallback": true,
+    "error": "ImageKit not configured — using local upload fallback"
+  }
+}

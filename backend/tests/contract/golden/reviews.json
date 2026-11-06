@@ -1,0 +1,103 @@
+{
+  "status": 200,
+  "body": {
+    "reviews": [
+      {
+        "id": "<id>",
+        "name": "Priya Sharma",
+        "role": "Mom of a 4-year-old",
+        "avatarEmoji": "👩",
+        "content": "My daughter finished the whole Baby Animals book in a weekend and asked for MORE. The thick outlines are perfect for her tiny hands. Printing at home was super easy!",
+        "rating": 5,
+        "zone": "kids",
+        "verified": false,
+        "sortOrder": 1,
+        "createdAt": "<ts>"
+      },
+      {
+        "id": "<id>",
+        "name": "Rahul Verma",
+        "role": "Dad of two",
+        "avatarEmoji": "🧔",
+        "content": "Dino Wonders saved our 6-hour train journey. Mazes, dot-to-dot, masks — worth every rupee. Printing the pack was instant after UPI payment.",
+        "rating": 5,
+        "zone": "kids",
+        "verified": false,
+        "sortOrder": 2,
+        "createdAt": "<ts>"
+      },
+      {
+        "id": "<id>",
+        "name": "Anita Desai",
+        "role": "Preschool teacher",
+        "avatarEmoji": "👩‍🏫",
+        "content": "I use the Phonics Adventures stories with my whole class. The A1–A2 level is exactly right and the kids adore Sibra & Joy. Requesting more levels!",
+        "rating": 5,
+        "zone": "kids",
+        "verified": false,
+        "sortOrder": 3,
+        "createdAt": "<ts>"
+      },
+      {
+        "id": "<id>",
+        "name": "Meera Iyer",
+        "role": "Mom of a 6-year-old",
+        "avatarEmoji": "👩",
+        "content": "The Calm Routines guide changed our mornings. The routine charts are printed on our fridge and my son now READS his own schedule. Calm house, happy amma.",
+        "rating": 5,
+        "zone": "kids",
+        "verified": false,
+        "sortOrder": 4,
+        "createdAt": "<ts>"
+      },
+      {
+        "id": "<id>",
+        "name": "Arjun Mehta",
+        "role": "Freelance Designer",
+        "avatarEmoji": "🧑‍🎨",
+        "content": "The Canva vault replaced 3 months of design grinding. Clients think I hired an agency. 10/10 — the carousel templates alone are worth it.",
+        "rating": 5,
+        "zone": "creator",
+        "verified": false,
+        "sortOrder": 5,
+        "createdAt": "<ts>"
+      },
+      {
+        "id": "<id>",
+        "name": "Sana Khan",
+        "role": "Content Creator",
+        "avatarEmoji": "🧕",
+        "content": "Bought the video prompts pack after UPI payment — download link hit my inbox in literally 20 seconds. My Reels views tripled the next week. Insane value.",
+        "rating": 5,
+        "zone": "creator",
+        "verified": false,
+        "sortOrder": 6,
+        "createdAt": "<ts>"
+      },
+      {
+        "id": "<id>",
+        "name": "Vikram Singh",
+        "role": "Full-stack Developer",
+        "avatarEmoji": "👨‍💻",
+        "content": "Automation scripts bundle is the real deal. The n8n blueprints saved my agency ~15 hours a week. Clean code, clear guides, no fluff.",
+        "rating": 5,
+        "zone": "creator",
+        "verified": false,
+        "sortOrder": 7,
+        "createdAt": "<ts>"
+      },
+      {
+        "id": "<id>",
+        "name": "Neha Gupta",
+        "role": "Job Seeker → Hired 🎉",
+        "avatarEmoji": "👩‍💼",
+        "content": "Used the ATS resume pack on Monday, got 3 interview calls by Friday after weeks of silence. The keyword cheat sheet is pure gold.",
+        "rating": 5,
+        "zone": "creator",
+        "verified": false,
+        "sortOrder": 8,
+        "createdAt": "<ts>"
+      }
+    ]
+  }
+}

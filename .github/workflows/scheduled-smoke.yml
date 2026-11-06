@@ -1,0 +1,46 @@
+name: scheduled-smoke
+
+# ═══════════════════════════════════════════════════════════
+# DISABLED BY DEFAULT — read-only production smoke on a schedule.
+#
+# Enable in TWO steps (see docs/TESTING.md §scheduled-smoke):
+#   1. Add repository VARIABLES (Settings → Secrets and variables →
+#      Actions → Variables):  FRONTEND_URL, BACKEND_URL  (https URLs)
+#      and optionally the secret  PROD_READONLY_DATABASE_URL  (a
+#      READ-ONLY role — the integrity checker only ever SELECTs).
+#   2. Set the repository variable ENABLE_SCHEDULED_SMOKE to "true".
+# The job is a no-op until that variable exists, so enabling it is
+# an explicit owner action.
+#
+# Safety law: this workflow only ever runs `verify:prod`, which is
+# strictly read-only (GET/HEAD + safe negative probes; the integrity
+# checker is SELECT-only). It never runs the payment assistant.
+# ═══════════════════════════════════════════════════════════
+
+on:
+  workflow_dispatch: # always available manually
+  schedule:
+    - cron: "0 4 * * *" # 04:00 UTC daily — inert until ENABLE_SCHEDULED_SMOKE=true
+
+jobs:
+  smoke:
+    if: vars.ENABLE_SCHEDULED_SMOKE == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+      - name: Read-only production verification
+        env:
+          FRONTEND_URL: ${{ vars.FRONTEND_URL }}
+          BACKEND_URL: ${{ vars.BACKEND_URL }}
+          PROD_READONLY_DATABASE_URL: ${{ secrets.PROD_READONLY_DATABASE_URL }}
+        run: bun run verify:prod
+      - name: Upload report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: verify-prod-report
+          path: reports/
+          retention-days: 30

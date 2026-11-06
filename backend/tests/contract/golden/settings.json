@@ -1,0 +1,18 @@
+{
+  "status": 200,
+  "body": {
+    "settings": {
+      "tickerKidsText": "Interactive E-Books, Puzzles, ABCD & Fun Coloring Books for Little Minds!",
+      "tickerCreatorText": "Premium Canva Templates, High-Converting AI Prompts, Scripts & Responsive Web Designs!",
+      "tickerAssetsText": "High-Quality Premium Downloads for Curious Minds & Professionals Aligned!",
+      "announcementBanner": "🎉 Launch Week: Use code SIBRA10 for 10% off — Instant UPI delivery on all ⚡ products!",
+      "upiId": "sibra@upi",
+      "upiPayeeName": "Sibra Digital Hub",
+      "instantDownloadEnabled": true,
+      "soundEnabled": false,
+      "promoCode": "SIBRA10",
+      "contactEmail": "<email>",
+      "siteTagline": "Instant downloads. Pay by card or UPI."
+    }
+  }
+}

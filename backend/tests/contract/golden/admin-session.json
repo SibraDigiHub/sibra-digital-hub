@@ -1,0 +1,22 @@
+{
+  "status": 200,
+  "body": {
+    "authenticated": true,
+    "stage": "FULL",
+    "user": {
+      "id": "<id>",
+      "name": "Owner",
+      "email": "<email>"
+    },
+    "csrfToken": "<tok>",
+    "security": {
+      "totpEnabled": false,
+      "passkeys": 0,
+      "recoveryCodesRemaining": 0,
+      "require2fa": false,
+      "passkeysEnabled": true,
+      "lastLoginAt": "<ts>",
+      "passwordChangedAt": null
+    }
+  }
+}

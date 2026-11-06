@@ -1,0 +1,63 @@
+{
+  "status": 200,
+  "body": {
+    "faqs": [
+      {
+        "id": "<id>",
+        "question": "How does Instant Download work?",
+        "answer": "For products marked ⚡ Instant Download, tap the Instant Download button, enter your name and email, and pay securely — UPI (GPay, PhonePe, Paytm, BHIM) and cards in India via Razorpay, cards and more internationally. The moment your payment is confirmed, your file link is emailed to you automatically — usually within seconds — and also shown on the thank-you page.",
+        "sortOrder": 1,
+        "createdAt": "<ts>"
+      },
+      {
+        "id": "<id>",
+        "question": "Which payment methods do you accept?",
+        "answer": "For India: UPI apps (GPay, PhonePe, Paytm, BHIM), cards and net banking via Razorpay. Internationally: cards (and PayPal where Razorpay enables it) via Razorpay Checkout. All payments are processed on a secure, PCI-compliant gateway — we never see your card details.",
+        "sortOrder": 2,
+        "createdAt": "<ts>"
+      },
+      {
+        "id": "<id>",
+        "question": "I paid but didn’t receive the delivery email. What do I do?",
+        "answer": "First check your Spam/Promotions folder for the email. Still nothing? Use the Contact page with your UPI transaction ID and we’ll re-send your download link within a few hours (usually much faster). Every payment is verifiable, so you can never lose your purchase.",
+        "sortOrder": 3,
+        "createdAt": "<ts>"
+      },
+      {
+        "id": "<id>",
+        "question": "How do I print the kids’ books and what paper should I use?",
+        "answer": "All printables are 300 DPI PDFs sized for A4 and US Letter. Print at home on 100–120 GSM paper, or take the PDF to any local print shop (\"A4, colour, single-sided\" is all you need to say). For colouring books, thicker paper (160+ GSM) handles sketch pens beautifully.",
+        "sortOrder": 4,
+        "createdAt": "<ts>"
+      },
+      {
+        "id": "<id>",
+        "question": "What is your refund policy for digital products?",
+        "answer": "Because our products are digital and delivered instantly, all sales are final once the file has been downloaded. However — if a file is corrupted, doesn’t match its description, or the download fails, we will fix it or refund you in full. Contact us within 7 days and we’ll make it right.",
+        "sortOrder": 5,
+        "createdAt": "<ts>"
+      },
+      {
+        "id": "<id>",
+        "question": "What licence comes with Creator Hub products?",
+        "answer": "Personal-licence products are for your own projects. Commercial-licence products (marked on each product) can be used in client work and end-products you sell, but cannot be resold or redistributed as-is. Extended licences for agencies are available on request.",
+        "sortOrder": 6,
+        "createdAt": "<ts>"
+      },
+      {
+        "id": "<id>",
+        "question": "Can I buy the books on Amazon or Notion Press instead?",
+        "answer": "Yes! Many of our kids’ books have \"Also on Amazon KDP\", \"Notion Press\" or \"Etsy\" buttons right on the product card. Note that Amazon/Notion Press sell Kindle and print editions, while only our own checkout can deliver the instant PDF downloads.",
+        "sortOrder": 7,
+        "createdAt": "<ts>"
+      },
+      {
+        "id": "<id>",
+        "question": "What ages are the Kids Zone products for?",
+        "answer": "Most products are for ages 2–10, and every product card shows its exact age range (e.g., \"Ages 4–8\"). Story e-books also carry an English level (A1–A2) for young learners. If you’re unsure which suits your child, contact us — Professor Sibra Naaz personally answers recommendations.",
+        "sortOrder": 8,
+        "createdAt": "<ts>"
+      }
+    ]
+  }
+}

@@ -1,0 +1,34 @@
+{
+  "status": 200,
+  "body": {
+    "integrations": {
+      "database": "boolean",
+      "razorpay": "boolean",
+      "international": "boolean",
+      "imagekit": "boolean",
+      "resend": "boolean",
+      "authSecrets": "boolean"
+    },
+    "payments": {
+      "razorpayMode": "string",
+      "internationalEnabled": "boolean",
+      "foreignCurrencies": "array",
+      "lastWebhookAt": "null",
+      "lastWebhookGateway": "null",
+      "failedEmailsToday": "number"
+    },
+    "cronHeartbeats": {
+      "reconcilePayments": "null",
+      "retryEmails": "null"
+    },
+    "demoMode": "boolean",
+    "counters": {
+      "archivedProducts": "number",
+      "pendingOrders": "number",
+      "failedEmails": "number",
+      "failedPayments": "number",
+      "events24h": "number"
+    },
+    "alerts": "array"
+  }
+}

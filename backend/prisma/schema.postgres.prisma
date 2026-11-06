@@ -1,0 +1,167 @@
+// Atharva Digital Labs — Marketplace Schema (Prisma + Postgres (Neon) — deploy schema)
+// Products / Orders (instant delivery) / Reviews / FAQ / Site Settings
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ─────────────────────────────────────────────
+// PRODUCTS (Zone A: kids · Zone B: creator)
+// ─────────────────────────────────────────────
+model Product {
+  id                String   @id @default(cuid())
+  title             String
+  slug              String   @unique
+  zone              String   @default("kids") // 'kids' | 'creator'
+  category          String   @default("coloring-books")
+  authorBrand       String   @default("Professor Sibra Naaz")
+  ageOrLevel        String?
+  priceUsd          Float    @default(4.99)
+  priceInr          Float    @default(399)
+  badge             String   @default("New")
+  description       String   @default("")
+  // Detail-page tabs
+  whatsInside       String   @default("[]") // JSON string[] bullets
+  howToUse          String   @default("")
+  license           String   @default("personal") // 'personal' | 'commercial' | 'extended'
+  // Media
+  mediaType         String   @default("images") // 'images' | 'video'
+  images            String   @default("[]") // JSON string[] (ImageKit / hosted URLs)
+  videoPreviewUrl   String?
+  // Checkout links — admin decides per product which are visible
+  internationalLink String? // Gumroad / Payhip (USD)
+  indiaLink         String? // Razorpay UPI (INR)
+  platformLinks     String   @default("[]") // JSON [{ platform, url }] → Amazon KDP, Notion Press, Etsy, Payhip, Pothi, Gumroad, custom
+  instantDownload   Boolean  @default(false) // ⚡ auto-delivery via email after UPI payment
+  deliverableUrl    String? // private file URL (PDF/ZIP) delivered by email
+  deliverableName   String?
+  // Meta
+  featured          Boolean  @default(false)
+  sortOrder         Int      @default(0)
+  status            String   @default("published") // 'draft' | 'published' | 'archived' (trash)
+  tags              String   @default("[]") // JSON string[]
+  fileFormats       String   @default("[]") // JSON string[] e.g. ["PDF","PNG"]
+  pageCount         Int?
+  spatialCoords     String   @default("{}") // JSON {x,y,z}
+  orders            Order[]
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  @@index([zone])
+  @@index([category])
+  @@index([featured])
+  @@index([sortOrder])
+}
+
+// ─────────────────────────────────────────────
+// ORDERS (instant-download pipeline)
+// ─────────────────────────────────────────────
+model Order {
+  id                    String    @id @default(cuid())
+  productId             String
+  product               Product   @relation(fields: [productId], references: [id])
+  razorpayPaymentId     String?   @unique
+  razorpayPaymentLinkId String?
+  customerName          String
+  customerEmail         String
+  amountInr             Float
+  status                String    @default("pending") // 'pending' | 'paid' | 'failed' | 'revoked' | 'refunded'
+  downloadTokenHash     String?   @unique // SHA-256 of token (plain token never stored)
+  tokenExpiresAt        DateTime?
+  downloadCount         Int       @default(0)
+  emailSent             Boolean   @default(false)
+  visitorId             String? // anonymous visitor cookie — links the customer's browsing timeline
+  createdAt             DateTime  @default(now())
+  updatedAt             DateTime  @updatedAt
+
+  @@index([customerEmail])
+  @@index([status])
+  @@index([visitorId])
+  @@index([createdAt])
+}
+
+// ─────────────────────────────────────────────
+// ACTIVITY EVENTS (customer & product analytics)
+// Powers Admin → Activity funnel, top products,
+// platform click share and customer timelines.
+// ─────────────────────────────────────────────
+model ActivityEvent {
+  id        String   @id @default(cuid())
+  type      String // product_view | buy_click | platform_click | checkout_started | order_paid | download | email_resent | search
+  productId String?
+  zone      String?
+  platform  String?
+  email     String?
+  orderId   String?
+  visitorId String?
+  path      String?
+  referrer  String?
+  country   String?
+  device    String? // mobile | tablet | desktop | bot
+  meta      String   @default("{}") // JSON extras (e.g. { q, url })
+  createdAt DateTime @default(now())
+
+  @@index([type])
+  @@index([productId])
+  @@index([email])
+  @@index([visitorId])
+  @@index([createdAt])
+}
+
+// ─────────────────────────────────────────────
+// AUDIT LOG (admin actions — who changed what)
+// ─────────────────────────────────────────────
+model AuditLog {
+  id        String   @id @default(cuid())
+  action    String // product.create | product.update | product.archive | order.refund | ...
+  entity    String // product | order | settings | customer | review | faq
+  entityId  String?
+  label     String? // human-readable (product title, email…)
+  diff      String? // JSON summary of changed fields
+  ip        String?
+  createdAt DateTime @default(now())
+
+  @@index([entity])
+  @@index([createdAt])
+}
+
+// ─────────────────────────────────────────────
+// REVIEWS (owner-managed testimonials)
+// ─────────────────────────────────────────────
+model Review {
+  id          String   @id @default(cuid())
+  name        String
+  role        String   @default("Parent")
+  avatarEmoji String   @default("🌟")
+  content     String
+  rating      Int      @default(5)
+  zone        String   @default("kids") // 'kids' | 'creator'
+  verified    Boolean  @default(true)
+  sortOrder   Int      @default(0)
+  createdAt   DateTime @default(now())
+}
+
+// ─────────────────────────────────────────────
+// FAQ
+// ─────────────────────────────────────────────
+model FaqItem {
+  id        String   @id @default(cuid())
+  question  String
+  answer    String
+  sortOrder Int      @default(0)
+  createdAt DateTime @default(now())
+}
+
+// ─────────────────────────────────────────────
+// SITE SETTINGS (key-value, editable from admin)
+// ─────────────────────────────────────────────
+model SiteSetting {
+  key       String   @id
+  value     String
+  updatedAt DateTime @updatedAt
+}

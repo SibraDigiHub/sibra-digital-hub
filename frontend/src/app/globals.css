@@ -1,0 +1,964 @@
+@import "tailwindcss";
+@import "tw-animate-css";
+
+@custom-variant dark (&:is(.dark *));
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --font-sans: var(--font-jakarta);
+  --font-mono: var(--font-jetbrains);
+  --color-ring: var(--ring);
+  --color-input: var(--input);
+  --color-border: var(--border);
+  --color-destructive: var(--destructive);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-accent: var(--accent);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-muted: var(--muted);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-secondary: var(--secondary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-primary: var(--primary);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-popover: var(--popover);
+  --color-card-foreground: var(--card-foreground);
+  --color-card: var(--card);
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+}
+
+:root {
+  --radius: 0.625rem;
+  --background: #050706;
+  --foreground: #f5f8f6;
+  --card: rgba(20, 26, 22, 0.88);
+  --card-foreground: #f5f8f6;
+  --popover: rgba(16, 21, 18, 0.96);
+  --popover-foreground: #f5f8f6;
+  --primary: #e5b842;
+  --primary-foreground: #050706;
+  --secondary: rgba(229, 184, 66, 0.12);
+  --secondary-foreground: #fae8a7;
+  --muted: rgba(154, 168, 158, 0.12);
+  --muted-foreground: #9aa89e;
+  --accent: rgba(229, 184, 66, 0.15);
+  --accent-foreground: #fae8a7;
+  --destructive: #ef4444;
+  --border: rgba(229, 184, 66, 0.22);
+  --input: rgba(229, 184, 66, 0.22);
+  --ring: rgba(229, 184, 66, 0.65);
+
+  /* ── Shell tokens (gold on obsidian) ── */
+  --bg-dark: #050706;
+  --gold-primary: #e5b842;
+  --gold-light: #fae8a7;
+  --gold-dark: #8c6a1e;
+  --text-main: #f5f8f6;
+  --text-muted: #9aa89e;
+
+  /* ── Zone A pastels ── */
+  --za-amber: #fff2cc;
+  --za-rose: #fce5cd;
+  --za-orange: #ffb347;
+  --za-mint: #b8f2d0;
+  --za-sky: #bde3ff;
+
+  /* ── Zone B neons ── */
+  --zb-obsidian: #0d0d0d;
+  --zb-cyan: #00f0ff;
+  --zb-pink: #ff007f;
+  --zb-mint: #00f5a0;
+  --zb-violet: #c084fc;
+}
+
+/* ═══════════════════════════════════════════
+   ZONE THEMING — data-zone on <html>
+   ═══════════════════════════════════════════ */
+html[data-zone="kids"] {
+  --background: #fffdf8;
+  --foreground: #4a3b2a;
+  --card: #ffffff;
+  --card-foreground: #4a3b2a;
+  --popover: #ffffff;
+  --popover-foreground: #4a3b2a;
+  --primary: #ffb347;
+  --primary-foreground: #4a2800;
+  --secondary: #fff2cc;
+  --secondary-foreground: #7a4a00;
+  --muted: #fdf6ea;
+  /* Darker warm brown so small helper text stays easily readable
+     on the cream background (was #9c8465, then #7d6440 — deepened
+     again so descriptions hold up over the peachy sky blobs). */
+  --muted-foreground: #664e2e;
+  --accent: #fce5cd;
+  --accent-foreground: #7a4a00;
+  --border: rgba(255, 179, 71, 0.45);
+  --input: rgba(255, 179, 71, 0.5);
+  --ring: #ffb347;
+  /* Edge fades of marquee rails melt into the page, not into obsidian */
+  --edge-fade: #fffdf8;
+}
+
+html[data-zone="creator"],
+html:not([data-zone="kids"]):not([data-zone="creator"]) {
+  --edge-fade: #050706;
+}
+
+html[data-zone="creator"] {
+  --background: #0d0d0d;
+  --foreground: #e8f6f2;
+  --card: rgba(16, 20, 22, 0.92);
+  --card-foreground: #e8f6f2;
+  --popover: rgba(12, 14, 16, 0.97);
+  --popover-foreground: #e8f6f2;
+  --primary: #00f0ff;
+  --primary-foreground: #001318;
+  --secondary: rgba(0, 240, 255, 0.1);
+  --secondary-foreground: #8ef4ff;
+  --muted: rgba(0, 240, 255, 0.06);
+  --muted-foreground: #6fa7a0;
+  --accent: rgba(255, 0, 127, 0.12);
+  --accent-foreground: #ff5ca8;
+  --border: rgba(0, 240, 255, 0.28);
+  --input: rgba(0, 240, 255, 0.3);
+  --ring: #00f0ff;
+}
+
+/* ═══════════════════════════════════════════
+   SHOP READABILITY (Creator Hub only)
+   The zone's muted teal (#6fa7a0) disappears on the
+   obsidian backdrop. Near-white keeps hierarchy but
+   stays legible. Scoped to data-zone="creator" so the
+   Kids Zone (cream background) is untouched.
+   ═══════════════════════════════════════════ */
+html[data-zone="creator"] .shop-sub {
+  color: #e8f6f2;
+  opacity: 0.9;
+}
+html[data-zone="creator"] .shop-search {
+  border-color: rgba(0, 240, 255, 0.6);
+}
+html[data-zone="creator"] .shop-search::placeholder {
+  color: rgba(232, 246, 242, 0.78);
+  opacity: 1;
+}
+
+html {
+  scroll-behavior: smooth;
+}
+
+body {
+  background: var(--background);
+  color: var(--foreground);
+  font-family: var(--font-jakarta), system-ui, sans-serif;
+  overflow-x: hidden;
+  min-height: 100vh;
+  transition: background 0.7s ease, color 0.7s ease;
+}
+
+* {
+  -webkit-tap-highlight-color: transparent;
+}
+
+/* ═══════════════════════════════════════════
+   TYPOGRAPHY HELPERS
+   ═══════════════════════════════════════════ */
+.font-cinzel { font-family: var(--font-cinzel), serif; }
+.font-playfair { font-family: var(--font-playfair), Georgia, serif; }
+.font-jakarta { font-family: var(--font-jakarta), sans-serif; }
+.font-jetbrains { font-family: var(--font-jetbrains), monospace; }
+.font-baloo { font-family: var(--font-baloo), cursive; }
+
+/* Holographic / Y2K gradient text */
+.holo-text {
+  background: linear-gradient(100deg, #fae8a7 0%, #e5b842 22%, #fff6d8 45%, #00f0ff 68%, #ff007f 100%);
+  background-size: 200% auto;
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  animation: holo-shine 5s linear infinite;
+}
+@keyframes holo-shine {
+  to { background-position: 200% center; }
+}
+
+/* Kids cartoon text shadow */
+.toon-text {
+  text-shadow:
+    0 2px 0 rgba(255, 255, 255, 0.9),
+    0 4px 0 rgba(255, 179, 71, 0.55),
+    0 8px 18px rgba(255, 136, 0, 0.25);
+}
+
+/* Chromatic aberration glitch (Zone B hover, ≤150ms) */
+.glitch-hover { position: relative; }
+.glitch-hover:hover::before,
+.glitch-hover:hover::after {
+  content: attr(data-text);
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+.glitch-hover:hover::before {
+  color: var(--zb-cyan);
+  animation: glitch-a 0.15s steps(2) infinite;
+  clip-path: inset(0 0 55% 0);
+}
+.glitch-hover:hover::after {
+  color: var(--zb-pink);
+  animation: glitch-b 0.15s steps(2) infinite reverse;
+  clip-path: inset(55% 0 0 0);
+}
+@keyframes glitch-a {
+  0% { transform: translate(-2px, -1px); opacity: 0.8; }
+  100% { transform: translate(2px, 1px); opacity: 0.8; }
+}
+@keyframes glitch-b {
+  0% { transform: translate(2px, 1px); opacity: 0.8; }
+  100% { transform: translate(-2px, -1px); opacity: 0.8; }
+}
+
+/* ═══════════════════════════════════════════
+   LIQUID GLASS / GLASSMORPHISM SHELL
+   ═══════════════════════════════════════════ */
+.glass {
+  background: rgba(16, 21, 18, 0.62);
+  backdrop-filter: blur(20px) saturate(140%);
+  -webkit-backdrop-filter: blur(20px) saturate(140%);
+  border: 1px solid rgba(229, 184, 66, 0.25);
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.35);
+}
+html[data-zone="kids"] .glass {
+  background: rgba(255, 255, 255, 0.72);
+  border: 1px solid rgba(255, 179, 71, 0.4);
+  box-shadow: 0 8px 32px rgba(255, 150, 50, 0.15);
+}
+html[data-zone="creator"] .glass {
+  background: rgba(10, 12, 14, 0.66);
+  border: 1px solid rgba(0, 240, 255, 0.25);
+  box-shadow: 0 8px 32px rgba(0, 240, 255, 0.08);
+}
+
+/* ═══════════════════════════════════════════
+   ZONE A — CLAYMORPHISM + SKEUOMORPHISM
+   ═══════════════════════════════════════════ */
+.clay-card {
+  border-radius: 24px;
+  background: linear-gradient(145deg, #fffdf6 0%, #fff3dd 100%);
+  box-shadow:
+    inset 0 2px 0 rgba(255, 255, 255, 0.95),
+    inset 0 -3px 6px rgba(255, 179, 71, 0.18),
+    0 10px 24px rgba(255, 136, 0, 0.16),
+    0 2px 6px rgba(140, 106, 30, 0.12);
+  border: 1px solid rgba(255, 200, 120, 0.6);
+  transition: transform 0.35s cubic-bezier(0.34, 1.56, 0.64, 1), box-shadow 0.35s ease;
+}
+.clay-card:hover {
+  transform: translateY(-6px) scale(1.03);
+  box-shadow:
+    inset 0 2px 0 rgba(255, 255, 255, 0.95),
+    inset 0 -3px 6px rgba(255, 179, 71, 0.2),
+    0 20px 44px rgba(255, 136, 0, 0.26),
+    0 4px 10px rgba(140, 106, 30, 0.16);
+}
+
+/* 3D book with spine (skeuomorphic) */
+.book-3d {
+  position: relative;
+  transform-style: preserve-3d;
+  perspective: 1200px;
+}
+.book-spine::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 12px;
+  background: linear-gradient(90deg, rgba(0, 0, 0, 0.28), rgba(0, 0, 0, 0.06) 60%, rgba(255, 255, 255, 0.25));
+  border-radius: 24px 0 0 24px;
+  z-index: 2;
+}
+.book-pages::after {
+  content: "";
+  position: absolute;
+  right: -6px;
+  top: 4px;
+  bottom: 4px;
+  width: 8px;
+  background: repeating-linear-gradient(180deg, #fff 0 2px, #e8e0cf 2px 4px);
+  border-radius: 0 6px 6px 0;
+  transform: rotateY(18deg);
+  transform-origin: left;
+  z-index: 1;
+}
+
+/* Paper grain overlay (4% opacity) */
+.paper-grain::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  opacity: 0.04;
+  border-radius: inherit;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='120' height='120'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2'/%3E%3C/filter%3E%3Crect width='120' height='120' filter='url(%23n)'/%3E%3C/svg%3E");
+}
+
+/* ═══════════════════════════════════════════
+   ZONE B — CYBERPUNK / BENTO
+   ═══════════════════════════════════════════ */
+.cyber-card {
+  border-radius: 4px;
+  background: linear-gradient(160deg, rgba(14, 16, 18, 0.92), rgba(8, 10, 12, 0.96));
+  border: 1px solid rgba(0, 240, 255, 0.22);
+  position: relative;
+  transition: border-color 0.25s ease, box-shadow 0.25s ease, transform 0.25s ease;
+}
+.cyber-card::before {
+  content: "";
+  position: absolute;
+  inset: -1px;
+  border-radius: 4px;
+  padding: 1px;
+  background: linear-gradient(120deg, transparent 30%, rgba(0, 240, 255, 0.7) 50%, transparent 70%);
+  background-size: 220% 220%;
+  background-position: 120% 0;
+  -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+  -webkit-mask-composite: xor;
+  mask-composite: exclude;
+  opacity: 0;
+  transition: background-position 0.6s ease, opacity 0.25s ease;
+  pointer-events: none;
+}
+.cyber-card:hover::before {
+  opacity: 1;
+  background-position: -20% 0;
+}
+.cyber-card:hover {
+  box-shadow: 0 0 32px rgba(0, 240, 255, 0.14), 0 0 12px rgba(255, 0, 127, 0.1);
+  transform: translateY(-4px);
+}
+
+/* ═══════════════════════════════════════
+   KIDS ZONE — brighter, playful, PREMIUM
+   storybook section theming
+   ═══════════════════════════════════════ */
+html[data-zone="kids"] .sec-eyebrow {
+  font-family: var(--font-baloo), cursive;
+  color: #a04d00;
+  letter-spacing: 0.18em;
+  text-shadow: 0 1px 0 rgba(255, 255, 255, 0.85);
+}
+html[data-zone="kids"] .sec-heading {
+  font-family: var(--font-baloo), cursive;
+  font-weight: 800;
+  letter-spacing: 0.005em;
+  /* IMPORTANT: no text-shadow on this heading! An ancestor
+     text-shadow paints OVER a descendant's background-clip:text
+     fill in Chromium and washes the gradient words pale (the
+     old "colour-mixing" bug). Depth comes from drop-shadow. */
+  background: linear-gradient(100deg, #5d3a00 0%, #7a4a00 18%, #6b3f00 38%, #8a5200 56%, #6b3f00 76%, #5d3a00 100%);
+  background-size: 200% auto;
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  animation: holo-shine 7s linear infinite;
+  filter:
+    drop-shadow(0 1px 0 rgba(255, 253, 248, 0.9))
+    drop-shadow(0 4px 10px rgba(93, 58, 0, 0.22));
+}
+html[data-zone="kids"] .holo-text {
+  /* Deep candy gradient — every stop stays readable on cream.
+     Scoped to ALL Kids Zone gradient words (Journey, Inspire Us,
+     Questions, Digital Delivery…) so none of them melt into the
+     light background like the default pale-gold holo did. */
+  background: linear-gradient(95deg, #f97316 0%, #e67300 30%, #f43f8e 60%, #ea580c 100%);
+  background-size: 200% auto;
+  -webkit-background-clip: text;
+  background-clip: text;
+  animation: holo-shine 5s linear infinite;
+  /* Gentle 3D emboss via drop-shadow — follows the gradient glyphs
+     without the muddy halo a text-shadow would leave behind. */
+  filter: drop-shadow(0 1px 0 rgba(255, 253, 248, 0.9));
+}
+
+/* Kids Zone text system — professional readability with a clean
+   3D letterpress. The old white+orange toon halo made dark text
+   look blurred and colour-mixed on the cream theme. */
+html[data-zone="kids"] .toon-text:not(.kids-3d-head) {
+  color: #3e2c18;
+  text-shadow:
+    0 1px 0 rgba(255, 255, 255, 0.75),
+    0 3px 8px rgba(93, 58, 0, 0.22);
+}
+/* Big Kids Zone headlines (catalog title, product titles): deep
+   animated amber gradient + embossed 3D edge — professional,
+   fully readable, and alive. */
+html[data-zone="kids"] .kids-3d-head {
+  background: linear-gradient(100deg, #7a4a00 0%, #a04d00 18%, #8a5200 38%, #b25e00 56%, #8a5200 76%, #7a4a00 100%);
+  background-size: 200% auto;
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  /* MUST be none — any text-shadow (own or inherited usage) paints
+     OVER a background-clip:text fill in Chromium and washes it pale */
+  text-shadow: none;
+  animation: holo-shine 6s linear infinite;
+  filter:
+    drop-shadow(0 1.5px 0 rgba(255, 252, 243, 0.95))
+    drop-shadow(0 4px 8px rgba(93, 58, 0, 0.28));
+}
+/* Crayon-wave underline beneath kids section headings */
+html[data-zone="kids"] .sec-heading::after {
+  content: "";
+  display: block;
+  width: 132px;
+  height: 10px;
+  margin: 10px auto 0;
+  background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='132' height='10' viewBox='0 0 132 10'%3E%3Cpath d='M2 6 Q 12 1, 22 6 T 42 6 T 62 6 T 82 6 T 102 6 T 122 6' fill='none' stroke='%23FFB347' stroke-width='4' stroke-linecap='round' opacity='0.85'/%3E%3C/svg%3E") no-repeat center / contain;
+}
+/* Bento chips — amber text is unreadable on the white kids
+   glass, so warm it up to the deep brand brown there */
+html[data-zone="kids"] .how-chip {
+  color: #a04d00 !important;
+  border-color: rgba(255, 179, 71, 0.65) !important;
+  background: rgba(255, 179, 71, 0.14) !important;
+}
+/* Warm skin for the footer inside the Kids Zone */
+html[data-zone="kids"] .site-footer {
+  background: linear-gradient(180deg, #fff4dc 0%, #ffeed0 100%);
+  border-top: 2px solid rgba(255, 179, 71, 0.5);
+  color: #5b4a33;
+}
+/* Kids footer copy & link points: black + bold for contrast on
+   the cream footer background (owner request). Hover stays amber. */
+html[data-zone="kids"] .site-footer .footer-muted { color: #000; font-weight: 700; }
+html[data-zone="kids"] .site-footer .footer-link { color: #000; font-weight: 700; }
+html[data-zone="kids"] .site-footer .footer-link:hover { color: #b25e00; }
+/* "Still curious? Contact us →" button: black + bold in the Kids
+   Zone only (the FAQ section is shared with the dark Creator Hub,
+   where it keeps its neon primary color). */
+html[data-zone="kids"] .faq-contact { color: #000; font-weight: 700; }
+/* Dark-on-light navbar links inside the Kids Zone (the glass
+   turns white there, so near-white link text disappears) */
+html[data-zone="kids"] .site-nav .nav-link { color: rgba(74, 59, 42, 0.9); }
+html[data-zone="kids"] .site-nav .nav-link:hover { color: #b25e00; }
+html[data-zone="kids"] .site-nav .nav-burger { color: rgba(74, 59, 42, 0.95); }
+html[data-zone="kids"] .site-nav .nav-burger:hover { color: #b25e00; }
+/* Navbar Social Media icon: same dark tone as the other navbar buttons in
+   the Kids Zone (near-white icon was invisible on the white glass).
+   Hover stays YouTube red (owner request). */
+html[data-zone="kids"] .site-nav .nav-social { color: rgba(74, 59, 42, 0.9); }
+html[data-zone="kids"] .site-nav .nav-social:hover { color: #FF0000; }
+/* Lighter, airier Kids Zone page — the shell's ambient gold/cyan
+   blobs are softened ONLY while the Kids Zone is active, so the
+   gateway and Creator Hub keep their original ambience */
+html[data-zone="kids"] .blob { opacity: 0.28; }
+
+/* Floating 3D sky decorations (Kids Zone ambience) */
+.kid-float {
+  position: absolute;
+  pointer-events: none;
+  user-select: none;
+  will-change: transform;
+  filter: drop-shadow(0 10px 14px rgba(255, 136, 0, 0.18));
+}
+.kid-float-a { animation: kid-float-a 7s ease-in-out infinite; }
+.kid-float-b { animation: kid-float-b 9s ease-in-out infinite; }
+.kid-float-c { animation: kid-float-c 11s linear infinite; }
+@keyframes kid-float-a {
+  0%, 100% { transform: translate3d(0, 0, 0) rotate(-4deg); }
+  50% { transform: translate3d(10px, -22px, 0) rotate(5deg); }
+}
+@keyframes kid-float-b {
+  0%, 100% { transform: translate3d(0, 0, 0) rotate(6deg) rotateY(0deg); }
+  50% { transform: translate3d(-14px, -18px, 0) rotate(-6deg) rotateY(180deg); }
+}
+@keyframes kid-float-c {
+  0% { transform: translate3d(0, 12dvh, 0) rotateY(0deg) rotate(8deg); }
+  100% { transform: translate3d(4vw, -108dvh, 0) rotateY(360deg) rotate(-8deg); }
+}
+
+/* Neo-brutalist promo sticker */
+.brutal-sticker {
+  border: 3px solid #000;
+  box-shadow: 4px 4px 0 #000;
+  border-radius: 6px;
+  transform: rotate(-3deg);
+}
+
+/* Neon edge matrix tag */
+.mono-tag {
+  font-family: var(--font-jetbrains), monospace;
+  font-size: 10px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: rgba(0, 240, 255, 0.85);
+  border: 1px solid rgba(0, 240, 255, 0.3);
+  border-radius: 2px;
+  padding: 2px 6px;
+  background: rgba(0, 240, 255, 0.06);
+}
+
+/* ═══════════════════════════════════════════
+   ANIMATED GRADIENT BLOBS (shell background)
+   ═══════════════════════════════════════════ */
+.blob {
+  position: fixed;
+  border-radius: 50%;
+  filter: blur(90px);
+  pointer-events: none;
+  z-index: 0;
+  opacity: 0.5;
+  animation: blob-float 16s ease-in-out infinite alternate;
+}
+@keyframes blob-float {
+  0% { transform: translate(0, 0) scale(1); }
+  50% { transform: translate(40px, -30px) scale(1.12); }
+  100% { transform: translate(-30px, 24px) scale(0.94); }
+}
+
+/* ═══════════════════════════════════════════
+   TICKER (RTL marquee, seamless loop)
+   ═══════════════════════════════════════════ */
+.ticker-track {
+  display: flex;
+  width: max-content;
+  will-change: transform;
+  animation: ticker-rtl 45s linear infinite;
+}
+.ticker-wrap:hover .ticker-track,
+.ticker-wrap:active .ticker-track {
+  animation-play-state: paused;
+}
+@keyframes ticker-rtl {
+  from { transform: translateX(0); }
+  to { transform: translateX(-50%); }
+}
+/* Zone-aware ticker skins */
+.ticker-skin-kids .ticker-track button { color: #5d3f0d; }
+.ticker-skin-kids .ticker-track button:hover { color: #b25e00; }
+.ticker-skin-kids .ticker-sep { color: #e59b2c; }
+.ticker-skin-creator .ticker-track button { color: #f5f8f6; }
+.ticker-skin-creator .ticker-track button:hover { color: #fae8a7; }
+.ticker-skin-creator .ticker-sep { color: #e5b842; }
+/* Premium candy-stripe ambience for the kids ticker band */
+.ticker-skin-kids {
+  background-image:
+    radial-gradient(rgba(255, 179, 71, 0.22) 1.6px, transparent 1.6px),
+    linear-gradient(90deg, #FFF6DF 0%, #FFEEC2 50%, #FFF6DF 100%);
+  background-size: 22px 22px, 100% 100%;
+}
+
+/* ═══════════════════════════════════════════
+   JOURNEY 3D SHOWCASE SLIDER
+   ═══════════════════════════════════════════ */
+.journey-track {
+  display: flex;
+  width: max-content;
+  gap: 24px;
+  animation: ticker-rtl 55s linear infinite;
+}
+.journey-wrap:hover .journey-track {
+  animation-play-state: paused;
+}
+.journey-item {
+  transform-style: preserve-3d;
+  transition: transform 0.4s ease;
+}
+.journey-item:hover {
+  transform: perspective(900px) rotateY(-8deg) translateY(-6px) scale(1.04);
+}
+
+/* ═══════════════════════════════════════════
+   SCROLL REVEAL (progressive enhancement)
+   ═══════════════════════════════════════════ */
+.reveal {
+  opacity: 0;
+  transform: translateY(28px);
+  transition: opacity 0.7s ease, transform 0.7s cubic-bezier(0.22, 1, 0.36, 1);
+}
+.reveal.revealed {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+/* Specular glare for 3D glass cards */
+.specular {
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  pointer-events: none;
+  background: radial-gradient(420px circle at var(--glare-x, 50%) var(--glare-y, 20%), rgba(255, 255, 255, 0.22), transparent 60%);
+  opacity: 0;
+  transition: opacity 0.3s ease;
+}
+.group:hover .specular,
+.specular-on { opacity: 1; }
+
+/* 3D tilt wrapper. NOTE: no `will-change` here or on .flip-panel — a
+   persistent composited layer on nested preserve-3d elements breaks
+   backface-visibility culling on real desktop GPUs (the flip then shows
+   the front face mirrored / never completes). Transitions still run on
+   the compositor while animating; the hint is not needed. */
+.tilt-wrap {
+  perspective: 1200px;
+}
+.tilt-inner {
+  transform-style: preserve-3d;
+  transition: transform 0.18s ease-out;
+}
+
+/* 3D quick-buy flip (Kids + Creator cards). Compositor-driven CSS
+   transition — the rotation plays identically on every mobile AND
+   desktop browser, independent of OS animation / reduced-motion
+   settings and of JS animation timing. */
+.flip-scene {
+  perspective: 1200px;
+}
+.flip-panel {
+  position: relative;
+  height: 100%;
+  transform-style: preserve-3d;
+  transition: transform 0.9s cubic-bezier(0.65, 0, 0.35, 1);
+}
+.flip-panel.is-flipped {
+  transform: rotateY(180deg);
+}
+.flip-face {
+  backface-visibility: hidden;
+  -webkit-backface-visibility: hidden;
+}
+.flip-face-back {
+  transform: rotateY(180deg);
+}
+
+/* ═══════════════════════════════════════════
+   CUSTOM SCROLLBAR
+   ═══════════════════════════════════════════ */
+.nice-scroll::-webkit-scrollbar { width: 8px; height: 8px; }
+.nice-scroll::-webkit-scrollbar-track { background: transparent; }
+.nice-scroll::-webkit-scrollbar-thumb {
+  background: linear-gradient(180deg, rgba(229, 184, 66, 0.5), rgba(229, 184, 66, 0.25));
+  border-radius: 999px;
+}
+html[data-zone="creator"] .nice-scroll::-webkit-scrollbar-thumb {
+  background: linear-gradient(180deg, rgba(0, 240, 255, 0.5), rgba(255, 0, 127, 0.3));
+}
+
+/* ═══════════════════════════════════════════
+   CHAMELEON SWEEP — zone home page headings
+   A soft multi-hue band (magenta → amber → mint → sky)
+   sweeps RIGHT → LEFT across the letters. The heading's own
+   fill is re-stated as background layer 2, so the original
+   colour NEVER changes — the band is a pure overlay pass.
+   Layer 2 also keeps the existing shimmer (same 0→200% glide,
+   same per-heading duration via --cham-dur).
+   ═══════════════════════════════════════════ */
+@keyframes chameleon-rtl {
+  from { background-position: 0% 0, 0% center; }
+  to   { background-position: 150% 0, 200% center; }
+}
+.chameleon-sweep {
+  /* the travelling band — layer 1 of 2 */
+  --cham-band: linear-gradient(
+    270deg,
+    rgba(255, 0, 128, 0) 0%,
+    rgba(255, 0, 128, 0) 34%,
+    rgba(255, 64, 129, 0.9) 42%,
+    rgba(255, 214, 0, 0.9) 50%,
+    rgba(64, 255, 170, 0.9) 58%,
+    rgba(0, 160, 255, 0) 66%,
+    rgba(0, 160, 255, 0) 100%
+  );
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  animation: chameleon-rtl var(--cham-dur, 7s) linear infinite;
+}
+/* Kids section headings — warm multi-hue flow restated below the band */
+html[data-zone="kids"] .sec-heading.chameleon-sweep {
+  --cham-dur: 7s;
+  background-image:
+    var(--cham-band),
+    linear-gradient(100deg, #9a3412 0%, #d97706 20%, #be185d 45%, #c2410c 68%, #9a3412 100%);
+  background-size: 300% 100%, 200% auto;
+}
+/* Kids catalog headline — amber → orange → pink flow restated */
+html[data-zone="kids"] .kids-3d-head.chameleon-sweep {
+  --cham-dur: 6s;
+  background-image:
+    var(--cham-band),
+    linear-gradient(100deg, #b45309 0%, #ea580c 20%, #db2777 45%, #f59e0b 68%, #b45309 100%);
+  background-size: 300% 100%, 200% auto;
+}
+/* Creator catalog headline — seamless gold → cyan → magenta loop */
+html[data-zone="creator"] .holo-text.chameleon-sweep {
+  --cham-dur: 5s;
+  background-image:
+    var(--cham-band),
+    linear-gradient(95deg, #fae8a7 0%, #e5b842 20%, #fff6d8 40%, #00f0ff 62%, #ff007f 82%, #fae8a7 100%);
+  background-size: 300% 100%, 200% auto;
+}
+/* Creator section headings — brand cyan → gold → magenta flow */
+html[data-zone="creator"] .sec-heading.chameleon-sweep {
+  background-image:
+    var(--cham-band),
+    linear-gradient(100deg, #00f0ff 0%, #e5b842 30%, #ff007f 62%, #00f0ff 100%);
+  background-size: 300% 100%, 200% auto;
+}
+
+/* ═══════════════════════════════════════════
+   GATEWAY CARD HEADINGS — chameleon letter wave
+   Each letter of the Zone A / Zone B card titles
+   cycles its colour; negative per-letter delays make
+   the hue wave travel RIGHT → LEFT across the text.
+   The static per-letter gradient (inline colour) is
+   the base the wave animates away from and back to.
+   ═══════════════════════════════════════════ */
+@keyframes cham-wave-kids {
+  0%, 100% { color: #9a3412; }
+  35% { color: #c2410c; }
+  70% { color: #be185d; }
+}
+@keyframes cham-wave-creator {
+  0%, 100% { color: #00f0ff; }
+  40% { color: #e5b842; }
+  72% { color: #ff007f; }
+}
+.chameleon-letter {
+  animation: cham-wave-kids 3.2s linear infinite;
+}
+.chameleon-letter.cham-creator {
+  animation-name: cham-wave-creator;
+}
+
+/* ═══════════════════════════════════════════
+   REDUCED MOTION (parity rule, owner decision)
+   ═══════════════════════════════════════════ */
+/* Decorative motion (chameleon sweep, letter wave, holo shine,
+   blobs, floating kids decor, gateway scatter text) is NOT
+   disabled here any more — same decision as the marquees below:
+   it must look identical on every device. Many desktop OSes
+   (Windows "Animation effects" off, remote desktop, power saver)
+   report prefers-reduced-motion: reduce, and killing the motion
+   there made PC browsers look different from phones. Genuinely
+   harsh effects stay gentle through the zone animation's
+   `gentle` motion profile (no camera shake, softened flash). */
+@media (prefers-reduced-motion: reduce) {
+  * { transition-duration: 0.01ms !important; }
+  .reveal { opacity: 1; transform: none; }
+  /* Quick-buy 3D flip stays visible: many PCs report `reduce` purely
+     because the OS animation toggle is off, which used to snap the flip
+     instantly (desktop looked broken next to mobile). Owner instruction
+     05 Nov: the flip must play exactly as on mobile — a single short
+     user-initiated rotation. Keep the 0.9s in sync with the
+     .flip-panel base rule above. */
+  .flip-panel { transition-duration: 0.9s !important; }
+}
+
+/* content-visibility for long sections */
+.cv-auto { content-visibility: auto; contain-intrinsic-size: auto 640px; }
+
+/* Focus visibility for a11y */
+:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: 3px;
+  border-radius: 4px;
+}
+
+/* kids text refresh */
+
+/* gw-letter-wave v2 */
+
+/* ═══════════════════════════════════════════
+   LEGAL PAGES (privacy / terms / refund / contact)
+   Scoped to .legal-root — other pages untouched.
+   ═══════════════════════════════════════════ */
+.legal-section {
+  opacity: 0;
+  transform: translateY(12px);
+  transition: opacity 0.25s ease, transform 0.25s ease;
+}
+.legal-section.legal-in {
+  opacity: 1;
+  transform: none;
+}
+.legal-hero-glow {
+  background-size: 220% 220%;
+  animation: legal-shimmer 16s ease-in-out infinite;
+}
+@keyframes legal-shimmer {
+  0%,
+  100% {
+    background-position: 0% 50%;
+  }
+  50% {
+    background-position: 100% 50%;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .legal-section,
+  .legal-section.legal-in {
+    opacity: 1 !important;
+    transform: none !important;
+    transition: none !important;
+  }
+  .legal-hero-glow {
+    animation: none;
+  }
+}
+@media print {
+  .legal-root {
+    background: #fff !important;
+  }
+  .legal-root,
+  .legal-root * {
+    color: #111 !important;
+    text-shadow: none !important;
+    box-shadow: none !important;
+  }
+  .legal-root .glass,
+  .legal-root [class*='bg-'] {
+    background: transparent !important;
+  }
+  .legal-root [class*='border-'] {
+    border-color: #ddd !important;
+  }
+  .legal-root a[href^='http']::after {
+    content: ' (' attr(href) ')';
+    font-size: 10px;
+    color: #444 !important;
+  }
+  .legal-root a[href^='mailto']::after,
+  .legal-root a[href^='#']::after {
+    content: '';
+  }
+}
+
+/* ═══════════════════════════════════════════════════════════
+   HOW-IT-WORKS BENTO (§11.3.2) — dopamine polish.
+   Scoped to the 4 delivery tiles ONLY: animated gradient rim
+   (rotating conic, "start-to-start" seamless loop), breathing
+   colour aura, hover lift + glow, icon-disc ping halo.
+   New class names only — every existing rule untouched.
+   ═══════════════════════════════════════════════════════════ */
+
+/* 1) Hover lift + per-step glow bloom on the tile itself
+   (opacity kept from .reveal so the scroll fade still works) */
+.how-card {
+  transition:
+    opacity 0.7s ease,
+    transform 0.35s cubic-bezier(0.34, 1.56, 0.64, 1),
+    box-shadow 0.35s ease;
+}
+.how-card:hover {
+  transform: translateY(-5px);
+  box-shadow:
+    0 8px 32px rgba(0, 0, 0, 0.35),
+    0 14px 48px var(--hc-glow);
+}
+html[data-zone='kids'] .how-card:hover {
+  box-shadow:
+    0 8px 32px rgba(255, 150, 50, 0.15),
+    0 14px 48px var(--hc-glow);
+}
+
+/* 2) Breathing aura behind each tile (per-step colours) */
+.how-glow {
+  position: absolute;
+  inset: -3px;
+  border-radius: 30px;
+  background: linear-gradient(135deg, var(--hc1), var(--hc2));
+  filter: blur(22px);
+  opacity: 0.3;
+  pointer-events: none;
+  animation: how-pulse 4.5s ease-in-out infinite;
+}
+@keyframes how-pulse {
+  0%,
+  100% {
+    opacity: 0.26;
+    transform: scale(0.995);
+  }
+  50% {
+    opacity: 0.55;
+    transform: scale(1.005);
+  }
+}
+
+/* 3) Animated gradient rim — replaces the static glass border.
+   A rotating conic sits inside a ring-shaped mask, so only the
+   1.5px rim shows and the colours flow start→start forever.
+   Hidden entirely unless mask-composite is supported (then it
+   simply stays the original clean glass border). */
+.how-ring {
+  display: none;
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  padding: 1.5px;
+  overflow: hidden;
+  pointer-events: none;
+}
+@supports ((-webkit-mask-composite: xor) or (mask-composite: exclude)) {
+  .how-ring {
+    display: block;
+    -webkit-mask:
+      linear-gradient(#fff 0 0) content-box,
+      linear-gradient(#fff 0 0);
+    -webkit-mask-composite: xor;
+    mask:
+      linear-gradient(#fff 0 0) content-box,
+      linear-gradient(#fff 0 0);
+    mask-composite: exclude;
+  }
+}
+.how-ring::before {
+  content: '';
+  position: absolute;
+  inset: -160%;
+  background: conic-gradient(
+    from 0deg,
+    var(--hc1),
+    var(--hc2),
+    var(--hc1),
+    var(--hc2),
+    var(--hc1),
+    var(--hc2),
+    var(--hc1)
+  );
+  animation: how-spin 7s linear infinite;
+  will-change: transform;
+}
+@keyframes how-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* 4) Icon-disc ping halo — soft square ring breathing around
+   each gradient icon disc */
+.how-disc-halo {
+  position: absolute;
+  inset: -6px;
+  border-radius: 20px;
+  border: 1.5px solid var(--hc1);
+  opacity: 0.3;
+  pointer-events: none;
+  animation: how-halo 3s ease-in-out infinite;
+}
+@keyframes how-halo {
+  0%,
+  100% {
+    transform: scale(1);
+    opacity: 0.22;
+  }
+  50% {
+    transform: scale(1.12);
+    opacity: 0.65;
+  }
+}

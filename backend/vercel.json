@@ -1,0 +1,16 @@
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "//": "Sibra Digital Hub backend — a Next.js (App Router) API-only app. On Vercel it deploys AS a Next.js project (framework preset), so NO custom api/index.ts handler is needed; the route handlers under src/app/api/** are deployed as serverless functions automatically (adaptation of master-prompt §10.1's Express-style 'default handler export' to the framework actually in use, per its own instruction to verify the entry style against Vercel's docs).",
+  "framework": "nextjs",
+  "buildCommand": "prisma generate && prisma migrate deploy && next build",
+  "regions": ["bom1"],
+  "functions": {
+    "src/app/api/**/route.ts": {
+      "maxDuration": 15
+    }
+  },
+  "crons": [
+    { "path": "/api/cron/reconcile-payments", "schedule": "*/10 * * * *" },
+    { "path": "/api/cron/retry-emails", "schedule": "*/10 * * * *" }
+  ]
+}

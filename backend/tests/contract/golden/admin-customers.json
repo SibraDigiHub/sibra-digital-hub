@@ -1,0 +1,20 @@
+{
+  "status": 200,
+  "body": {
+    "customers": [
+      {
+        "email": "<email>",
+        "name": "Contract Fixture",
+        "totalOrders": 1,
+        "paidOrders": 0,
+        "lifetimeValueInr": 0,
+        "totalDownloads": 0,
+        "firstOrderAt": "<ts>",
+        "lastOrderAt": "<ts>",
+        "activityEvents": 0
+      }
+    ],
+    "count": 1,
+    "lifetimeValueInr": 0
+  }
+}
