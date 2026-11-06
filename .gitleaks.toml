@@ -1,4 +1,9 @@
-[[rules]]
-description = "Ignore specific email address"
-regex = '''sibradigitalhub@gmail\.com'''
-tags = ["email"]
+[extend]
+useDefault = true
+
+[allowlist]
+description = "Allow official Sibra Digital Hub contact email"
+regexTarget = "match"
+regexes = [
+  '''sibradigitalhub@gmail\.com'''
+]
