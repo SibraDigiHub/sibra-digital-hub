@@ -1,7 +1,8 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
-  "//": "Sibra Digital Hub frontend — Next.js SPA shell. Deploys with the Next.js framework preset; the proxy (src/proxy.ts) and /api rewrites run on the same deployment. buildCommand is pinned to plain `next build` so the local standalone packaging steps (package.json build:standalone) can never run on Vercel.",
   "framework": "nextjs",
   "buildCommand": "next build",
-  "regions": ["bom1"]
+  "regions": [
+    "bom1"
+  ]
 }
