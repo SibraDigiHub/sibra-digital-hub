@@ -186,3 +186,7 @@ reports/
 
 # Root lockfile belongs to excluded root package.json
 /bun.lock
+
+# Local Vercel configuration backups
+backend/vercel.json.backup
+backend/vercel.json.pre-cron

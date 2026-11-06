@@ -9,15 +9,5 @@
     "src/app/api/**/route.ts": {
       "maxDuration": 15
     }
-  },
-  "crons": [
-    {
-      "path": "/api/cron/reconcile-payments",
-      "schedule": "*/10 * * * *"
-    },
-    {
-      "path": "/api/cron/retry-emails",
-      "schedule": "*/10 * * * *"
-    }
-  ]
+  }
 }
