@@ -60,13 +60,7 @@ jobs:
         run: bun run typecheck
       - name: Boot dev server (for HTTP suites)
         working-directory: backend
-        run: |
-          nohup bun run dev > /tmp/backend-dev.log 2>&1 &
-          for i in $(seq 1 60); do
-            curl -sf http://127.0.0.1:3001/api > /dev/null && break
-            sleep 1
-          done
-          curl -sf http://127.0.0.1:3001/api
+        run: |\n          nohup next dev -p 3001 > /tmp/backend-dev.log 2>&1 &\n          for i in $(seq 1 60); do\n            curl -sf http://127.0.0.1:3001/api > /dev/null && break\n            sleep 1\n          done\n          curl -sf http://127.0.0.1:3001/api
       - name: Unit + integration tests
         working-directory: backend
         run: bun run test:payments
@@ -118,7 +112,7 @@ jobs:
         run: bun scripts/check-copy-claims.ts
       - name: Production build (production-safe dummy env)
         working-directory: frontend
-        run: ALLOW_LOCAL_BACKEND_URL=true BACKEND_URL=http://127.0.0.1:3001 NEXT_PUBLIC_SITE_URL=http://localhost:3000 bun run build
+        run: INTERNAL_API_KEY=ci-frontend-internal-0123456789 ALLOW_LOCAL_BACKEND_URL=true BACKEND_URL=http://127.0.0.1:3001 NEXT_PUBLIC_SITE_URL=http://localhost:3000 bun run build
       - name: Bundle-size gate (boots the build, checks First Load JS + lazy 3D)
         working-directory: frontend
         run: cd .. && bun scripts/check-bundle-size.ts
@@ -138,5 +132,7 @@ jobs:
         with:
           fetch-depth: 0
       - uses: gitleaks/gitleaks-action@v2
+        with:
+          config-path: ./.gitleaks.toml
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
