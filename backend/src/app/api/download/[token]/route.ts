@@ -33,7 +33,17 @@ import { downloadLimitPerIp } from '@/lib/auth/rate-limit'
 import { clientIp } from '@/lib/auth/session'
 import { hashToken, claimDownload, maxDownloads } from '@/lib/delivery'
 import { eventContext, logEvent } from '@/lib/activity'
-import { isImagekitRef, imagekitSignedUrlFromRef } from '@/lib/storage'
+import {
+  PRIVATE_URL_TTL_SECONDS,
+  isImagekitRef,
+  imagekitSignedUrlFromRef,
+} from '@/lib/storage'
+import {
+  isR2Ref,
+  parseR2Ref,
+  r2Configured,
+  r2SignedDownloadUrl,
+} from '@/lib/r2'
 
 export const dynamic = 'force-dynamic'
 
@@ -49,7 +59,8 @@ async function findOrder(token: string) {
 /** Map an order row to the exact failure state (same shapes as always). */
 function stateFor(order: OrderRow | null): { ok: false; error: string; status: number } | { ok: true; order: OrderRow } {
   if (!order || order.status !== 'paid') return { ok: false, error: 'This download link is not valid', status: 403 }
-  if (order.tokenExpiresAt && order.tokenExpiresAt < new Date())
+  // Fail closed: missing expiry must never bypass the atomic claim.
+  if (!order.tokenExpiresAt || order.tokenExpiresAt <= new Date())
     return { ok: false, error: 'This download link has expired — contact us for a fresh link', status: 410 }
   if (!order.product?.deliverableUrl) return { ok: false, error: 'File missing — contact support', status: 404 }
   if (order.downloadCount >= maxDownloads())
@@ -100,12 +111,28 @@ function safeRedirectTarget(deliverableUrl: string, req: NextRequest): string | 
 }
 
 /** Resolve the redirect target server-side, after full validation. */
-function resolveTarget(deliverableUrl: string, req: NextRequest): string | null {
+async function resolveTarget(
+  deliverableUrl: string,
+  req: NextRequest,
+  fileName?: string | null,
+): Promise<string | null> {
+  if (isR2Ref(deliverableUrl)) {
+    const objectKey = parseR2Ref(deliverableUrl)
+    if (!objectKey) return null
+
+    // R2 PRIVATE file → mint a 10-minute signed URL only after
+    // the atomic download claim has succeeded.
+    return r2SignedDownloadUrl(objectKey, {
+      ttlSeconds: PRIVATE_URL_TTL_SECONDS,
+      fileName: fileName ?? undefined,
+    })
+  }
+
   if (isImagekitRef(deliverableUrl)) {
-    // ImageKit PRIVATE file → mint a 10-minute signed URL at claim time.
-    // null ⇒ unconfigured/unsafe → the caller answers with the 404 shape.
+    // Existing ImageKit private-file behavior remains unchanged.
     return imagekitSignedUrlFromRef(deliverableUrl)
   }
+
   return safeRedirectTarget(deliverableUrl, req)
 }
 
@@ -120,19 +147,41 @@ async function claim(req: NextRequest, token: string): Promise<NextResponse> {
   let result = await validate(token)
   if (!result.ok) return failResponse(req, token, result)
 
+  // Validate private R2 references/configuration before consuming a download.
+  // GET remains validation-only and never generates a signed URL.
+  const deliverableUrlBeforeClaim = result.order.product.deliverableUrl!
+  if (isR2Ref(deliverableUrlBeforeClaim)) {
+    if (!parseR2Ref(deliverableUrlBeforeClaim) || !r2Configured()) {
+      return NextResponse.json(
+        { ok: false, error: 'File missing — contact support' },
+        { status: 404 },
+      )
+    }
+  }
+
   // ── Atomic claim: cap/expiry re-checked inside the UPDATE. ──
   const claimed = await claimDownload(hashToken(token), maxDownloads())
-  if (claimed === 0) {
-    // Lost a race (last slot taken / just expired) — recompute the exact state.
+  if (claimed !== 1) {
+    // Fail closed: never issue a file URL unless exactly one slot was claimed.
     const fresh = await findOrder(token)
-    result = stateFor(fresh)
-    if (!result.ok) return failResponse(req, token, result)
+    const freshState = stateFor(fresh)
+    if (!freshState.ok) return failResponse(req, token, freshState)
+
+    return failResponse(req, token, {
+      ok: false,
+      error: `Download limit reached (${maxDownloads()}) — contact us to reset it`,
+      status: 429,
+    })
   }
 
   await logDownload(req, result.order)
 
   const deliverableUrl = result.order.product.deliverableUrl!
-  const target = resolveTarget(deliverableUrl, req)
+  const target = await resolveTarget(
+    deliverableUrl,
+    req,
+    result.order.product.deliverableName,
+  )
   if (!target) return NextResponse.json({ ok: false, error: 'File missing — contact support' }, { status: 404 })
 
   if (req.nextUrl.searchParams.get('mode') === 'json') {

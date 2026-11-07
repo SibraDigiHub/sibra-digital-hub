@@ -85,6 +85,15 @@ const schema = z.object({
   IMAGEKIT_PRIVATE_KEY: z.string().optional(),
   IMAGEKIT_PUBLIC_KEY: z.string().optional(),
 
+  // ── Cloudflare R2 — private paid deliverables only ─────────
+  // Optional: the application must still boot when R2 is not configured.
+  R2_ACCOUNT_ID: z.string().optional(),
+  R2_ACCESS_KEY_ID: z.string().optional(),
+  R2_SECRET_ACCESS_KEY: z.string().optional(),
+  R2_BUCKET_NAME: z.string().optional(),
+  R2_S3_ENDPOINT: z.string().url().optional(),
+  R2_REGION: z.string().default('auto'),
+
   // ── T4 admin auth ────────────────────────────────────────────
   /** AES-256-GCM key (32 random bytes, base64) — TOTP secrets at rest. */
   ENCRYPTION_KEY: z.string().optional(),

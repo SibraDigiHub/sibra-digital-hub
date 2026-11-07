@@ -3,13 +3,13 @@ import { logger } from '@/lib/logger'
 import { NextRequest, NextResponse } from 'next/server'
 import { asHandler } from '@/lib/api'
 import { db } from '@/lib/db'
-import { isAdmin, unauthorized } from '@/lib/admin-auth'
+import { requireAdmin } from '@/lib/auth/session'
 import { writeAudit } from '@/lib/audit'
 
 export const dynamic = 'force-dynamic'
 
 export const POST = asHandler(async (req: NextRequest, { params }: { params: Promise<{ id: string }> }) => {
-  if (!(await isAdmin())) return unauthorized()
+  await requireAdmin(req)
   const { id } = await params
   try {
     const src = await db.product.findUnique({ where: { id } })

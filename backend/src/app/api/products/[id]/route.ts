@@ -2,8 +2,8 @@
 // DELETE /api/products/[id] — admin soft-delete (archive → trash)
 //   ?purge=1  → hard delete (only when the product has no orders)
 import { NextRequest } from 'next/server'
-import { asHandler, json, readJsonCapped, conflict, notFound, unauthorized } from '@/lib/api'
-import { isAdmin } from '@/lib/admin-auth'
+import { asHandler, json, readJsonCapped, conflict, notFound } from '@/lib/api'
+import { requireAdmin } from '@/lib/auth/session'
 import { writeAudit } from '@/lib/audit'
 import { logger } from '@/lib/logger'
 import { orderRepo } from '@/repositories/order-repo'
@@ -13,7 +13,7 @@ import { applyProductPatch, productExists } from '@/services/product-service'
 export const dynamic = 'force-dynamic'
 
 export const PATCH = asHandler(async (req: NextRequest, { params }: { params: Promise<{ id: string }> }) => {
-  if (!(await isAdmin())) throw unauthorized()
+  await requireAdmin(req)
   const { id } = await params
   const body = (await readJsonCapped(req)) as Record<string, unknown>
 
@@ -39,7 +39,7 @@ export const PATCH = asHandler(async (req: NextRequest, { params }: { params: Pr
 })
 
 export const DELETE = asHandler(async (req: NextRequest, { params }: { params: Promise<{ id: string }> }) => {
-  if (!(await isAdmin())) throw unauthorized()
+  await requireAdmin(req)
   const { id } = await params
   const purge = req.nextUrl.searchParams.get('purge') === '1'
 

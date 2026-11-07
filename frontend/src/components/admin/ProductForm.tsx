@@ -213,6 +213,176 @@ async function uploadFile(file: File, folder: 'images' | 'video' | 'files'): Pro
   return { url: up.url, name: up.name ?? safeName }
 }
 
+
+// Private Cloudflare R2 multipart upload for paid PDF/ZIP deliverables.
+// Browser receives short-lived presigned part URLs; R2 credentials stay backend-only.
+const R2_DELIVERABLE_MAX_BYTES = 300 * 1024 * 1024
+const R2_DELIVERABLE_PART_SIZE = 16 * 1024 * 1024
+const R2_DELIVERABLE_CONCURRENCY = 3
+
+type R2MultipartSession = {
+  uploadToken: string
+  uploadId: string
+  objectKey: string
+  fileName: string
+  partSize: number
+  maxParts: number
+}
+
+async function uploadDeliverableToR2(
+  file: File,
+): Promise<{ url: string; name: string }> {
+  const extension = file.name.split('.').pop()?.toLowerCase() ?? ''
+  if (!['pdf', 'zip'].includes(extension)) {
+    throw new Error('Only PDF and ZIP files are allowed.')
+  }
+  if (!file.size || file.size > R2_DELIVERABLE_MAX_BYTES) {
+    throw new Error('File must be between 1 byte and 300 MiB.')
+  }
+
+  const mimeType = extension === 'pdf'
+    ? 'application/pdf'
+    : (
+        ['application/zip', 'application/x-zip-compressed', 'application/octet-stream']
+          .includes(file.type)
+          ? file.type
+          : 'application/zip'
+      )
+
+  async function postJson<T>(url: string, body: unknown): Promise<T> {
+    const response = await adminFetch(url, {
+      method: 'POST',
+      body: JSON.stringify(body),
+    })
+    const data = await response.json().catch(() => null) as
+      | (T & { error?: string })
+      | null
+
+    if (!response.ok || !data) {
+      throw new Error(data?.error ?? `Upload request failed (${response.status}).`)
+    }
+    return data
+  }
+
+  let session: R2MultipartSession | null = null
+
+  try {
+    session = await postJson<R2MultipartSession>(
+      '/api/admin/r2/multipart/create',
+      {
+        fileName: file.name,
+        mimeType,
+        sizeBytes: file.size,
+      },
+    )
+
+    if (
+      !session.uploadToken ||
+      !session.uploadId ||
+      !session.objectKey ||
+      !session.partSize ||
+      session.partSize !== R2_DELIVERABLE_PART_SIZE
+    ) {
+      throw new Error('Backend returned invalid R2 upload details.')
+    }
+
+    const partCount = Math.ceil(file.size / session.partSize)
+    if (partCount > session.maxParts || partCount > 19) {
+      throw new Error('File requires too many upload parts.')
+    }
+
+    const signed = await postJson<{
+      parts: Array<{ partNumber: number; url: string }>
+    }>('/api/admin/r2/multipart/sign', {
+      uploadToken: session.uploadToken,
+      uploadId: session.uploadId,
+      objectKey: session.objectKey,
+      sizeBytes: file.size,
+      partNumbers: Array.from({ length: partCount }, (_, index) => index + 1),
+    })
+
+    if (!Array.isArray(signed.parts) || signed.parts.length !== partCount) {
+      throw new Error('Backend did not provide all signed upload parts.')
+    }
+
+    const urlByPart = new Map(
+      signed.parts.map((part) => [part.partNumber, part.url]),
+    )
+
+    for (let startPart = 1; startPart <= partCount; startPart += R2_DELIVERABLE_CONCURRENCY) {
+      const batch = Array.from(
+        { length: Math.min(R2_DELIVERABLE_CONCURRENCY, partCount - startPart + 1) },
+        (_, index) => startPart + index,
+      )
+
+      const results = await Promise.allSettled(batch.map(async (partNumber) => {
+        const url = urlByPart.get(partNumber)
+        if (!url) throw new Error(`Missing signed URL for part ${partNumber}.`)
+
+        const start = (partNumber - 1) * session!.partSize
+        const end = Math.min(start + session!.partSize, file.size)
+
+        const response = await fetch(url, {
+          method: 'PUT',
+          body: file.slice(start, end),
+          headers: { 'Content-Type': mimeType },
+        })
+
+        if (!response.ok) {
+          throw new Error(`R2 upload failed for part ${partNumber} (${response.status}).`)
+        }
+
+        // R2 CORS must expose ETag; check it before asking the backend to complete.
+        if (!response.headers.get('ETag')) {
+          throw new Error(
+            'R2 did not expose the ETag response header. Check bucket CORS settings.',
+          )
+        }
+      }))
+
+      // Wait for every in-flight part before the catch block attempts multipart abort.
+      const failedPart = results.find(
+        (result): result is PromiseRejectedResult => result.status === 'rejected',
+      )
+      if (failedPart) throw failedPart.reason
+    }
+
+    const completed = await postJson<{
+      deliverableUrl: string
+      fileName: string
+    }>('/api/admin/r2/multipart/complete', {
+      uploadToken: session.uploadToken,
+      uploadId: session.uploadId,
+      objectKey: session.objectKey,
+      sizeBytes: file.size,
+    })
+
+    if (!completed.deliverableUrl?.startsWith('r2:')) {
+      throw new Error('Backend did not return a valid private R2 reference.')
+    }
+
+    return {
+      url: completed.deliverableUrl,
+      name: completed.fileName || session.fileName || file.name,
+    }
+  } catch (error) {
+    if (session) {
+      try {
+        await postJson('/api/admin/r2/multipart/abort', {
+          uploadToken: session.uploadToken,
+          uploadId: session.uploadId,
+          objectKey: session.objectKey,
+          sizeBytes: file.size,
+        })
+      } catch {
+        // Preserve the original upload error; incomplete uploads are also
+        // covered by the bucket's incomplete-multipart lifecycle rule.
+      }
+    }
+    throw error
+  }
+}
+
 function priceText(form: FormState) {
   const usd = parseFloat(form.priceUsd)
   const inr = parseFloat(form.priceInr)
@@ -598,7 +768,7 @@ export default function ProductForm({ product, onDone }: ProductFormProps) {
     if (!file) return
     setDeliverableUploading(true)
     try {
-      const data = await uploadFile(file, 'files')
+      const data = await uploadDeliverableToR2(file)
       setForm((f) => ({ ...f, deliverableUrl: data.url, deliverableName: data.name || file.name }))
       setErrors((er) => {
         const next = { ...er }
@@ -1385,14 +1555,25 @@ export default function ProductForm({ product, onDone }: ProductFormProps) {
                   {form.deliverableUrl && (
                     <div className="flex items-center gap-2 rounded-lg border border-emerald-500/30 bg-[#07090B]/60 p-2 text-xs">
                       <Zap className="size-3.5 shrink-0 text-emerald-400" aria-hidden="true" />
-                      <a
-                        href={form.deliverableUrl}
-                        target="_blank"
-                        rel="noreferrer"
-                        className="min-w-0 flex-1 truncate font-mono text-emerald-300 hover:underline"
-                      >
-                        {form.deliverableName || form.deliverableUrl}
-                      </a>
+                      {form.deliverableUrl.startsWith('r2:') ? (
+                        <div className="min-w-0 flex-1">
+                          <p className="truncate font-mono text-emerald-300">
+                            {form.deliverableName || 'Private deliverable'}
+                          </p>
+                          <p className="text-[10px] text-emerald-400/80">
+                            Stored securely in Cloudflare R2
+                          </p>
+                        </div>
+                      ) : (
+                        <a
+                          href={form.deliverableUrl}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="min-w-0 flex-1 truncate font-mono text-emerald-300 hover:underline"
+                        >
+                          {form.deliverableName || form.deliverableUrl}
+                        </a>
+                      )}
                       <Button
                         type="button"
                         variant="ghost"

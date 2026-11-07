@@ -4,6 +4,8 @@ import { ApiError, conflict, str } from '@/lib/api'
 import { isAdmin, hasAdminSessionCookie } from '@/lib/admin-auth'
 import { productRepo, ProductRow } from '@/repositories/product-repo'
 import { cleanPastedVideoUrl, parseVideoSource, type VideoSource } from '@/lib/video-source'
+import { isR2Ref, parseR2Ref } from '@/lib/r2'
+import { isImagekitRef, parseImagekitRef } from '@/lib/storage'
 import type { ProductInput, ProductListQuery } from '@/validators/product'
 import type { NextRequest } from 'next/server'
 
@@ -31,6 +33,57 @@ function assertSafeVideoUrl(raw: string | null | undefined, label: string): stri
     )
   }
   return cleaned
+}
+
+/**
+ * Validate paid deliverable references without changing existing storage formats.
+ * Private references must pass their scheme-specific parser. Legacy HTTP(S)
+ * and site-relative file paths remain supported.
+ */
+function assertSafeDeliverableUrl(raw: string | null | undefined): string | null {
+  if (!raw || !raw.trim()) return null
+
+  const value = raw.trim()
+
+  if (/[\u0000-\u001f\u007f]/.test(value)) {
+    throw conflict('Deliverable reference contains invalid control characters')
+  }
+
+  if (isR2Ref(value)) {
+    if (!parseR2Ref(value)) {
+      throw conflict('Invalid private Cloudflare R2 deliverable reference')
+    }
+    return value
+  }
+
+  if (isImagekitRef(value)) {
+    if (!parseImagekitRef(value)) {
+      throw conflict('Invalid private ImageKit deliverable reference')
+    }
+    return value
+  }
+
+  // Keep existing site-relative deliverable paths working.
+  // Reject //host paths because they redirect to another origin.
+  if (value.startsWith('/')) {
+    if (value.startsWith('//')) {
+      throw conflict('Protocol-relative deliverable URLs are not allowed')
+    }
+    return value
+  }
+
+  let parsed: URL
+  try {
+    parsed = new URL(value)
+  } catch {
+    throw conflict('Deliverable must be a valid HTTP(S), relative, R2, or ImageKit reference')
+  }
+
+  if (parsed.protocol !== 'https:' && parsed.protocol !== 'http:') {
+    throw conflict('Only HTTP(S) external deliverable URLs are allowed')
+  }
+
+  return value
 }
 
 /** DTO mapper — explicit output shape, identical to the legacy Prisma row shape. */
@@ -202,7 +255,7 @@ export async function createProduct(input: ProductInput) {
     indiaLink: input.indiaLink ?? null,
     platformLinks: asJsonString(input.platformLinks, []),
     instantDownload: input.instantDownload,
-    deliverableUrl: input.deliverableUrl ?? null,
+    deliverableUrl: assertSafeDeliverableUrl(input.deliverableUrl),
     deliverableName: input.deliverableName ?? null,
     // ── T-V additive video-delivery fields ──
     deliveryMode: input.deliveryMode,
@@ -267,7 +320,7 @@ export function applyProductPatch(body: Record<string, unknown>): {
   if (body.indiaLink !== undefined) data.indiaLink = body.indiaLink ? str(body.indiaLink) : null
   if (body.platformLinks !== undefined) data.platformLinks = asJsonString(body.platformLinks, [])
   if (body.instantDownload !== undefined) data.instantDownload = Boolean(body.instantDownload)
-  if (body.deliverableUrl !== undefined) data.deliverableUrl = body.deliverableUrl ? str(body.deliverableUrl) : null
+  if (body.deliverableUrl !== undefined) data.deliverableUrl = assertSafeDeliverableUrl(body.deliverableUrl ? str(body.deliverableUrl) : null)
   if (body.deliverableName !== undefined) data.deliverableName = body.deliverableName ? str(body.deliverableName) : null
   if (body.featured !== undefined) data.featured = Boolean(body.featured)
   if (body.sortOrder !== undefined) data.sortOrder = Number(body.sortOrder) || 0

@@ -2,8 +2,8 @@
 // POST /api/products — admin create
 import { NextRequest, NextResponse } from 'next/server'
 import { asHandler, cachedJson, json, parseBody, parseQuery } from '@/lib/api'
-import { hasAdminSessionCookie, isAdmin } from '@/lib/admin-auth'
-import { unauthorized } from '@/lib/api'
+import { hasAdminSessionCookie } from '@/lib/admin-auth'
+import { requireAdmin } from '@/lib/auth/session'
 import { ensureVisitorId, eventContext, logEvent } from '@/lib/activity'
 import { writeAudit } from '@/lib/audit'
 import { productRepo } from '@/repositories/product-repo'
@@ -64,7 +64,7 @@ export const GET = asHandler(async (req: NextRequest) => {
 })
 
 export const POST = asHandler(async (req: NextRequest) => {
-  if (!(await isAdmin())) throw unauthorized()
+  await requireAdmin(req)
   const input = await parseBody(req, productInputSchema)
   const product = await createProduct(input)
   await writeAudit({ action: 'product.create', entity: 'product', entityId: product.id, label: product.title, req })

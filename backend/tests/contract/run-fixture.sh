@@ -26,8 +26,54 @@ case "$MODE" in capture | replay) ;; *) echo "usage: run-fixture.sh capture|repl
 
 PORT="${CONTRACT_FIXTURE_PORT:-3007}"
 FIXTURE_DB="${CONTRACT_FIXTURE_DB:-sibra_contract}"
-export DATABASE_URL="postgresql://postgres@127.0.0.1:5432/${FIXTURE_DB}"
-export DIRECT_URL="$DATABASE_URL"
+
+# Strict allowlist: ONLY the verified sibra-testing Neon project.
+EXPECTED_TEST_DIRECT_HOST="ep-silent-waterfall-aowa1s8o.c-2.ap-southeast-1.aws.neon.tech"
+EXPECTED_TEST_POOL_HOST="ep-silent-waterfall-aowa1s8o-pooler.c-2.ap-southeast-1.aws.neon.tech"
+
+if [[ "$FIXTURE_DB" != "sibra_contract" ]]; then
+  echo "run-fixture: refusing database other than sibra_contract"
+  exit 1
+fi
+
+# Ignore inherited shell overrides. Bun will load the verified values
+# from backend/.env instead of accidentally using an old local DB URL.
+unset DATABASE_URL DIRECT_URL
+
+# Read existing Neon TEST connection strings without displaying credentials.
+DB_URLS="$(bun -e '
+const pool = new URL(process.env.DATABASE_URL ?? "");
+const direct = new URL(process.env.DIRECT_URL ?? "");
+
+if (
+  pool.hostname !== "ep-silent-waterfall-aowa1s8o-pooler.c-2.ap-southeast-1.aws.neon.tech" ||
+  direct.hostname !== "ep-silent-waterfall-aowa1s8o.c-2.ap-southeast-1.aws.neon.tech" ||
+  pool.pathname !== "/neondb" ||
+  direct.pathname !== "/neondb"
+) {
+  console.error("run-fixture: database safety check failed; expected sibra-testing neondb URLs");
+  process.exit(1);
+}
+
+pool.pathname = "/sibra_contract";
+direct.pathname = "/sibra_contract";
+
+console.log(pool.toString());
+console.log(direct.toString());
+')"
+
+mapfile -t DB_URL_ARRAY <<< "$DB_URLS"
+
+if [[ "${#DB_URL_ARRAY[@]}" -ne 2 ]]; then
+  echo "run-fixture: could not safely resolve Neon TEST connection URLs"
+  exit 1
+fi
+
+CONTRACT_POOL_URL="${DB_URL_ARRAY[0]}"
+CONTRACT_DIRECT_URL="${DB_URL_ARRAY[1]}"
+
+export CONTRACT_FIXTURE_DB="$FIXTURE_DB"
+export CONTRACT_FIXTURE_ALLOWED_HOST="$EXPECTED_TEST_DIRECT_HOST"
 export CONTRACT_BASE_URL="http://127.0.0.1:${PORT}"
 
 # Runtime-generated fixture-admin credentials (never committed).
@@ -43,8 +89,16 @@ if [ -z "$INTERNAL_KEY" ]; then echo "run-fixture: INTERNAL_API_KEY missing in b
 LOG="tests/contract/.fixture-server.log"
 COOKIE="tests/contract/.admin-cookie"
 
-echo "── fixture: recreating clean database ${FIXTURE_DB}"
+echo "── fixture: recreating clean Neon TEST database ${FIXTURE_DB}"
+
+# Database reset uses the verified DIRECT connection only.
+export DATABASE_URL="$CONTRACT_DIRECT_URL"
+export DIRECT_URL="$CONTRACT_DIRECT_URL"
 bun tests/contract/fixture-db.ts reset
+
+# Prisma migrations and application use pooled + direct connections.
+export DATABASE_URL="$CONTRACT_POOL_URL"
+export DIRECT_URL="$CONTRACT_DIRECT_URL"
 
 echo "── fixture: prisma migrate deploy"
 bunx prisma migrate deploy >/dev/null
@@ -58,6 +112,12 @@ bun tests/contract/fixture-data.ts | tail -2
 rm -f "$COOKIE"
 
 echo "── fixture: booting backend on :${PORT} (dev mode)"
+IMAGEKIT_PRIVATE_KEY="" \
+NEXT_PUBLIC_IMAGEKIT_PUBLIC_KEY="" \
+NEXT_PUBLIC_IMAGEKIT_URL_ENDPOINT="" \
+IMAGEKIT_PRIVATE_KEY="" \
+NEXT_PUBLIC_IMAGEKIT_PUBLIC_KEY="" \
+NEXT_PUBLIC_IMAGEKIT_URL_ENDPOINT="" \
 bunx next dev -p "$PORT" >"$LOG" 2>&1 &
 SERVER_PID=$!
 trap 'kill "$SERVER_PID" 2>/dev/null || true; wait "$SERVER_PID" 2>/dev/null || true' EXIT
