@@ -83,7 +83,7 @@ export function businessValues(): LegalBusinessValues {
     businessName: BUSINESS_NAME,
     ownerName: env('NEXT_PUBLIC_LEGAL_OWNER_NAME') || LEGAL_OWNER_NAME,
     address: env('NEXT_PUBLIC_BUSINESS_ADDRESS') || BUSINESS_ADDRESS,
-    supportPhone: env('NEXT_PUBLIC_SUPPORT_PHONE'),
+    supportPhone: process.env.NEXT_PUBLIC_SUPPORT_PHONE || '',
     grievanceOfficer:
       env('NEXT_PUBLIC_GRIEVANCE_OFFICER_NAME') || LEGAL_OWNER_NAME,
     jurisdiction: env('NEXT_PUBLIC_LEGAL_JURISDICTION') || LEGAL_JURISDICTION,
