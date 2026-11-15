@@ -675,8 +675,8 @@ export function ProductDetailView({
                 </div>
                 <p className="mt-3 text-sm text-muted-foreground">
                   {product.instantDownload
-                    ? '⚡ Instant email delivery — your download link arrives within seconds of payment.'
-                    : 'Delivered by your chosen store (Amazon KDP, Etsy, Gumroad…) right after checkout.'}
+                    ? 'After payment confirmation, we attempt to email your download link. It may also be available on the thank-you page. Delivery timing can vary.'
+                    : "For purchases through an external store, check that store's listing and checkout for delivery details."}
                 </p>
               </div>
             </TabsContent>

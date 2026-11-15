@@ -44,12 +44,10 @@ export const BUSINESS_NAME = 'Sibra Digital Hub'
  *  NEXT_PUBLIC_LEGAL_OWNER_NAME still overrides it when set. */
 export const LEGAL_OWNER_NAME = 'Azaz Mohammad'
 
-/** Postal address shown publicly. Owner decision 05 Nov 2026: a full street
- *  address must NOT be published on a public website (privacy) — the short
- *  state/country form is the committed default; a fuller address can still be
- *  supplied via NEXT_PUBLIC_BUSINESS_ADDRESS without a code change.
+/** Public postal address supplied by the owner for business and grievance
+ *  contact disclosures. NEXT_PUBLIC_BUSINESS_ADDRESS may override this value.
  *  Renders on Privacy → “Who we are” and Contact → “Grievance redressal”. */
-export const BUSINESS_ADDRESS = 'West Bengal, India'
+export const BUSINESS_ADDRESS = '545 R B C Road, Post-Hazinagar, Naihati, North 24 Parganas, West Bengal, India'
 
 /** Courts with exclusive jurisdiction (Terms → “Governing law”). Derived
  *  from the owner’s district above; NEXT_PUBLIC_LEGAL_JURISDICTION
@@ -60,12 +58,12 @@ export const LEGAL_JURISDICTION = 'North 24 Parganas, West Bengal, India'
 export const FALLBACK_EMAIL = 'support@sibradigitalhub.com'
 
 /**
- * Response-time promise. Owner can override with
- * NEXT_PUBLIC_PRIVACY_RESPONSE_TIME_TEXT; the default follows the
- * agreed wording (3 working days to acknowledge, 30 days to complete).
+ * General support and data-request wording. Formal consumer grievance
+ * timelines are stated separately in the Contact policy.
+ * NEXT_PUBLIC_PRIVACY_RESPONSE_TIME_TEXT may override this default.
  */
 export const DEFAULT_RESPONSE_TIME =
-  'We acknowledge every request within 3 working days and complete it within 30 days — usually much sooner.'
+  'We review general support and data requests as soon as reasonably practicable. No fixed response time is promised.'
 
 export interface LegalBusinessValues {
   businessName: string

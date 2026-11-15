@@ -4,7 +4,7 @@ import { asHandler, cachedJson, json, parseBody, badRequest } from '@/lib/api'
 import { isAdmin } from '@/lib/admin-auth'
 import { unauthorized } from '@/lib/api'
 import { faqRepo } from '@/repositories/content-repo'
-import { createFaq, faqCreateSchema } from '@/services/content-service'
+import { createFaq, faqCreateSchema, updateFaq, faqUpdateSchema } from '@/services/content-service'
 
 export const dynamic = 'force-dynamic'
 
@@ -18,6 +18,15 @@ export const POST = asHandler(async (req: NextRequest) => {
   const input = await parseBody(req, faqCreateSchema)
   const faq = await createFaq(input)
   return json({ faq }, { status: 201 })
+})
+
+export const PATCH = asHandler(async (req: NextRequest) => {
+  if (!(await isAdmin())) throw unauthorized()
+  const id = req.nextUrl.searchParams.get('id')
+  if (!id) throw badRequest('id required')
+  const input = await parseBody(req, faqUpdateSchema)
+  const faq = await updateFaq(id, input)
+  return json({ faq })
 })
 
 export const DELETE = asHandler(async (req: NextRequest) => {

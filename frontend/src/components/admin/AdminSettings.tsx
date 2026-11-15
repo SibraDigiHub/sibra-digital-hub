@@ -59,6 +59,8 @@ export default function AdminSettings({
   const [addingReview, setAddingReview] = useState(false)
   const [faqs, setFaqs] = useState<FaqItem[] | null>(null)
   const [busyFaqId, setBusyFaqId] = useState<string | null>(null)
+  const [editingFaqId, setEditingFaqId] = useState<string | null>(null)
+  const [editingFaq, setEditingFaq] = useState(EMPTY_FAQ)
   const [newFaq, setNewFaq] = useState(EMPTY_FAQ)
   const [addingFaq, setAddingFaq] = useState(false)
 
@@ -179,6 +181,61 @@ export default function AdminSettings({
       toast({ title: err instanceof Error ? err.message : 'Could not add FAQ', variant: 'destructive' })
     } finally {
       setAddingFaq(false)
+    }
+  }
+
+  function startEditFaq(faq: FaqItem) {
+    setEditingFaqId(faq.id)
+    setEditingFaq({
+      question: faq.question,
+      answer: faq.answer,
+      sortOrder: String(faq.sortOrder),
+    })
+  }
+
+  async function saveFaq(id: string) {
+    if (!editingFaq.question.trim() || !editingFaq.answer.trim()) {
+      toast({ title: 'Question and answer are required', variant: 'destructive' })
+      return
+    }
+
+    const sortOrder = Number(editingFaq.sortOrder)
+    if (
+      editingFaq.sortOrder.trim() === '' ||
+      !Number.isSafeInteger(sortOrder) ||
+      sortOrder < 0
+    ) {
+      toast({
+        title: 'Sort order must be a non-negative whole number',
+        variant: 'destructive',
+      })
+      return
+    }
+
+    setBusyFaqId(id)
+    try {
+      const result = await adminJson<{ faq: FaqItem }>(
+        `/api/faqs?id=${encodeURIComponent(id)}`,
+        {
+          method: 'PATCH',
+          headers: JSON_HEADERS,
+          body: JSON.stringify({
+            question: editingFaq.question.trim(),
+            answer: editingFaq.answer.trim(),
+            sortOrder,
+          }),
+        },
+      )
+      setFaqs((list) =>
+        list ? list.map((faq) => (faq.id === id ? result.faq : faq)) : list,
+      )
+      setEditingFaqId(null)
+      setEditingFaq(EMPTY_FAQ)
+      toast({ title: 'FAQ updated' })
+    } catch (err) {
+      toast({ title: err instanceof Error ? err.message : 'Could not update FAQ', variant: 'destructive' })
+    } finally {
+      setBusyFaqId(null)
     }
   }
 
@@ -458,28 +515,97 @@ export default function AdminSettings({
         ) : (
           <div className="nice-scroll mt-4 max-h-72 space-y-2 overflow-y-auto pr-1">
             {faqs.map((f) => (
-              <div key={f.id} className="flex items-start gap-3 rounded-xl border border-white/10 p-3">
-                <div className="min-w-0 flex-1">
-                  <p className="text-sm font-medium">
-                    <span className="mr-1.5 font-mono text-xs text-[#9AA89E]">#{f.sortOrder}</span>
-                    {f.question}
-                  </p>
-                  <p className="mt-0.5 line-clamp-2 text-xs text-[#9AA89E]">{f.answer}</p>
-                </div>
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  className="size-9 shrink-0 hover:text-red-300"
-                  disabled={busyFaqId === f.id}
-                  onClick={() => void deleteFaq(f.id)}
-                  aria-label={`Delete FAQ: ${f.question}`}
-                >
-                  {busyFaqId === f.id ? (
-                    <Loader2 className="size-4 animate-spin" aria-hidden="true" />
-                  ) : (
-                    <Trash2 className="size-4" aria-hidden="true" />
-                  )}
-                </Button>
+              <div key={f.id} className="space-y-3 rounded-xl border border-white/10 p-3">
+                {editingFaqId === f.id ? (
+                  <>
+                    <div>
+                      <Label htmlFor={`edit-faq-question-${f.id}`}>Question</Label>
+                      <Input
+                        id={`edit-faq-question-${f.id}`}
+                        value={editingFaq.question}
+                        maxLength={300}
+                        onChange={(e) => setEditingFaq((v) => ({ ...v, question: e.target.value }))}
+                        className="mt-1.5"
+                      />
+                    </div>
+                    <div>
+                      <Label htmlFor={`edit-faq-answer-${f.id}`}>Answer</Label>
+                      <Textarea
+                        id={`edit-faq-answer-${f.id}`}
+                        value={editingFaq.answer}
+                        maxLength={2000}
+                        rows={4}
+                        onChange={(e) => setEditingFaq((v) => ({ ...v, answer: e.target.value }))}
+                        className="mt-1.5"
+                      />
+                    </div>
+                    <div className="max-w-32">
+                      <Label htmlFor={`edit-faq-order-${f.id}`}>Sort order</Label>
+                      <Input
+                        id={`edit-faq-order-${f.id}`}
+                        type="number"
+                        min="0"
+                        step="1"
+                        value={editingFaq.sortOrder}
+                        onChange={(e) => setEditingFaq((v) => ({ ...v, sortOrder: e.target.value }))}
+                        className="mt-1.5"
+                      />
+                    </div>
+                    <div className="flex flex-wrap gap-2">
+                      <Button
+                        size="sm"
+                        disabled={busyFaqId === f.id}
+                        onClick={() => void saveFaq(f.id)}
+                      >
+                        {busyFaqId === f.id ? (
+                          <Loader2 className="mr-1 size-4 animate-spin" aria-hidden="true" />
+                        ) : (
+                          <Save className="mr-1 size-4" aria-hidden="true" />
+                        )}
+                        Save
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        disabled={busyFaqId === f.id}
+                        onClick={() => {
+                          setEditingFaqId(null)
+                          setEditingFaq(EMPTY_FAQ)
+                        }}
+                      >
+                        Cancel
+                      </Button>
+                    </div>
+                  </>
+                ) : (
+                  <div className="flex items-start gap-3">
+                    <div className="min-w-0 flex-1">
+                      <p className="text-sm font-medium">
+                        <span className="mr-1.5 font-mono text-xs text-[#9AA89E]">#{f.sortOrder}</span>
+                        {f.question}
+                      </p>
+                      <p className="mt-0.5 line-clamp-2 text-xs text-[#9AA89E]">{f.answer}</p>
+                    </div>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      disabled={busyFaqId !== null || editingFaqId !== null}
+                      onClick={() => startEditFaq(f)}
+                    >
+                      Edit
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="size-9 shrink-0 hover:text-red-300"
+                      disabled={busyFaqId !== null || editingFaqId !== null}
+                      onClick={() => void deleteFaq(f.id)}
+                      aria-label={`Delete FAQ: ${f.question}`}
+                    >
+                      <Trash2 className="size-4" aria-hidden="true" />
+                    </Button>
+                  </div>
+                )}
               </div>
             ))}
           </div>

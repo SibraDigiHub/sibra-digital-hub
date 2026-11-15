@@ -33,7 +33,7 @@ const FALLBACK_FAQS: FaqItem[] = [
     id: 'fb-faq-2',
     question: 'How fast will I get my files?',
     answer:
-      '⚡ Instant-download items land in your inbox within seconds of payment — the download link stays live for 48 hours with up to 5 downloads, and if it expires we re-send a fresh link on request. Marketplace orders (Amazon, Etsy & more) follow that platform’s standard delivery timeline.',
+      "For direct instant-download purchases, we attempt to email your download link after payment confirmation. It may also be available on the thank-you page. The default link validity is 48 hours with up to 5 downloads, unless different delivery settings apply. If a link expires, contact support with your order details. After verifying the purchase, we can review a replacement-link request; a replacement is not automatic or guaranteed. For external-store purchases, check the store's listing and checkout for delivery details.",
     sortOrder: 2,
     createdAt: '',
   },

@@ -63,15 +63,15 @@ export const TERMS_PAGE: LegalPageData = {
           rows: [
             [
               'Personal',
-              'Use the files with your own children, your classroom or your personal projects',
+              'Use the files at home, in your classroom or at family events for personal use. You may not resell, redistribute or share the files themselves.',
             ],
             [
               'Commercial (marked on the product)',
-              'Use the assets in client work and in end products you sell',
+              'Use the assets in client work, monetised channels and end products you sell, up to 500 end products. Attribution is appreciated but not required. Teams larger than 5 seats need an extended licence.',
             ],
             [
-              'Extended (on request)',
-              'Agency and multi-team use — e-mail us and we will set it up',
+              'Extended',
+              'Unlimited commercial projects, agency use and white-label resale of derivative work. Original source files may not be resold as-is or repackaged as a competing template.',
             ],
           ],
         },
@@ -80,7 +80,7 @@ export const TERMS_PAGE: LegalPageData = {
           tone: 'rose',
           icon: 'scale',
           title: 'What no licence covers',
-          text: 'Reselling, redistributing, sharing or bundling the original files — or minor variations of them — free or paid, on any marketplace, file-sharing service or AI training dataset. Your download link is for you; please do not pass it around.',
+          text: 'Unless expressly permitted by an extended licence, you may not resell, redistribute, share or bundle the original source files as-is, or repackage them as competing templates. You may not upload the source files to file-sharing services or AI training datasets. An extended licence may permit white-label resale of derivative end products, but never resale of the original source files as-is.',
         },
       ],
     },
@@ -90,14 +90,14 @@ export const TERMS_PAGE: LegalPageData = {
       blocks: [
         {
           kind: 'p',
-          text: 'After payment your secure download link is e-mailed to you within seconds and also shown on the thank-you page. The link works for 48 hours and up to 5 downloads.',
+          text: 'After payment confirmation, we attempt to send your secure download link by e-mail. The link may also be displayed on the thank-you page when available. Unless a different limit is stated for your purchase, the default link validity is 48 hours and the default limit is 5 downloads per order. These limits may be changed by the applicable product or delivery settings.',
         },
         {
           kind: 'callout',
           tone: 'gold',
           icon: 'clock',
           title: 'Link expired?',
-          text: 'No stress — e-mail {{email}} with your order ID and we will send a fresh link. Genuine buyers never lose a purchase.',
+          text: 'If your link expires or you reach the download limit, e-mail {{email}} with your order ID or payment confirmation. After verifying your purchase, we can review your request and may issue a replacement link. A replacement is not automatic or guaranteed.',
         },
       ],
     },
@@ -107,11 +107,11 @@ export const TERMS_PAGE: LegalPageData = {
       blocks: [
         {
           kind: 'p',
-          text: 'Products delivered as a “protected watch page” give you a personal, time-limited link to watch the video on our site. The video is for your own viewing only — sharing the link, watching with others beyond your plan’s device limit, or re-uploading the video anywhere is not allowed.',
+          text: 'Products delivered through a “protected watch page” provide a personal, time-limited link to watch the video on our site. The access duration and maximum number of simultaneous viewing devices are specified for the product or at purchase. The link is for the purchaser’s permitted personal viewing and must not be shared, transferred or used to re-upload or redistribute the video.',
         },
         {
           kind: 'p',
-          text: 'Access may be limited to a set number of devices at the same time and to the hours stated at purchase. If a link is shared or used from too many different places, access can be paused or stopped — contact us and we will restore genuine buyers quickly.',
+          text: 'Our system may monitor viewing sessions and apply access limits to help detect link sharing. If activity exceeds the applicable concurrent-device limit or triggers our security checks, access may be temporarily or permanently locked pending review. Contact {{email}} with your order details if you believe access was restricted incorrectly. Any review or restoration is subject to verification and is not guaranteed.',
         },
       ],
     },
@@ -174,7 +174,7 @@ export const TERMS_PAGE: LegalPageData = {
       blocks: [
         {
           kind: 'p',
-          text: 'When you buy through Amazon KDP, Notion Press, Etsy, Payhip, Google Play Books or Gumroad, your contract is with that platform: their prices, taxes, delivery and refunds apply. This site cannot issue refunds for marketplace purchases — go through the platform where you bought.',
+          text: "When you follow a link from this site to an external store or marketplace, you complete the purchase under the terms shown by that store. Before paying, review the listing and checkout for the seller's identity, price, taxes, product format, licence, delivery and refund terms. Responsibility for fulfilment, customer support and refunds depends on the seller identified for that transaction, the store's terms and applicable law. Contact the relevant seller or marketplace for transaction-specific assistance. Nothing in these terms excludes any consumer rights or legal responsibilities that cannot lawfully be excluded.",
         },
       ],
     },

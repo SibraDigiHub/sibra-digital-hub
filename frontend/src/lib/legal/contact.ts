@@ -9,7 +9,7 @@ export const CONTACT_PAGE: LegalPageData = {
   id: 'contact',
   title: 'Contact Us',
   tagline:
-    'One address reaches a human at {{businessName}} — support, data requests and grievances.',
+    'Contact {{businessName}} for order support, data requests and formal grievances.',
   icon: 'mail',
   sections: [
     {
@@ -18,7 +18,7 @@ export const CONTACT_PAGE: LegalPageData = {
       blocks: [
         {
           kind: 'p',
-          text: 'The fastest way to a real reply is e-mail. Tell us your order ID when relevant — it lets us pull up everything in seconds.',
+          text: 'For support, e-mail us with a clear description of the issue. Include your order ID when your question relates to a purchase.',
         },
         {
           kind: 'mail-card',
@@ -34,7 +34,7 @@ export const CONTACT_PAGE: LegalPageData = {
       blocks: [
         {
           kind: 'p',
-          text: 'To see, correct or erase the data we hold about you, use the button below — it pre-fills the subject so your request is never missed. {{responseTime}}',
+          text: 'To request access to, correction of or erasure of personal data, e-mail us using the button below. Please include the e-mail address used on this site and any relevant order ID. {{responseTime}}',
         },
         {
           kind: 'mail-card',
@@ -50,16 +50,21 @@ export const CONTACT_PAGE: LegalPageData = {
       blocks: [
         {
           kind: 'p',
-          text: 'If something has gone wrong and a normal reply has not fixed it, mark your e-mail “Grievance” — it is read with priority.',
+          text: 'If you wish to make a formal consumer complaint, e-mail {{email}} with “Grievance” in the subject line and describe the issue clearly.',
         },
         {
           kind: 'list',
           items: [
-            'Grievance Officer: {{grievanceOfficer}}',
+            'Name: {{grievanceOfficer}}',
+            'Designation: Grievance Officer & Owner, Sibra Digital Hub',
             'Grievance e-mail: {{email}}',
             'Postal address: {{address}}',
             'Phone / WhatsApp: {{supportPhone}}',
           ],
+        },
+        {
+          kind: 'p',
+          text: 'Under the Consumer Protection (E-Commerce) Rules, 2020, consumer complaints will be acknowledged within 48 hours of receipt and redressed within one month from the date of receipt.',
         },
       ],
     },
@@ -72,7 +77,7 @@ export const CONTACT_PAGE: LegalPageData = {
           items: [
             '1. Check spam and promotions folders for “{{businessName}}”.',
             '2. Search your inbox for your order ID.',
-            '3. Still nothing? E-mail us from the address you paid with and we will re-send the download link.',
+            '3. Still nothing? E-mail us from the address used for payment. After verifying the purchase, we can check the delivery and help with an eligible replacement link.',
           ],
         },
       ],
@@ -95,8 +100,8 @@ export const CONTACT_PAGE: LegalPageData = {
           kind: 'callout',
           tone: 'mint',
           icon: 'clock',
-          title: 'When we reply',
-          text: '{{responseTime}} — 7 days a week, real humans, plain words.',
+          title: 'General support requests',
+          text: '{{responseTime}} Formal consumer grievances are subject to the separate statutory timelines stated in the Grievance redressal section.',
         },
       ],
     },

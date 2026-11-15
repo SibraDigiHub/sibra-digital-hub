@@ -8,6 +8,9 @@ export const faqRepo = {
   create(data: { question: string; answer: string; sortOrder: number }) {
     return db.faqItem.create({ data })
   },
+  update(id: string, data: { question: string; answer: string; sortOrder: number }) {
+    return db.faqItem.update({ where: { id }, data })
+  },
   remove(id: string) {
     return db.faqItem.delete({ where: { id } })
   },
