@@ -10,14 +10,15 @@
 // (inline DATABASE_URL = project convention — the sandbox parent dir carries a
 // decoy .env whose value would otherwise win over backend/.env)
 // ═══════════════════════════════════════════════════════════
-import { describe, expect, test } from 'bun:test'
-import { PDFDocument } from 'pdf-lib'
+import { beforeAll, describe, expect, test } from 'bun:test'
+import { PDFDocument, StandardFonts, type PDFFont } from 'pdf-lib'
 
 import {
   billedAmountMinor,
   buildInvoicePdf,
   buildInvoiceRef,
   currencyLabel,
+  fitOneLine,
   formatMoney,
   invoiceFileName,
   loadInvoiceData,
@@ -122,7 +123,74 @@ describe('buildInvoicePdf', () => {
     expect(loaded.getTitle()).toBe('Invoice SDH-2026-00001 — Sibra Digital Hub')
   })
 
+  test('a very long product title / customer name still renders a valid single page', async () => {
+    const wide: InvoiceData = {
+      ...data,
+      seller: { ...data.seller, gstin: '27ABCDE1234F1Z5' }, // GSTIN set ⇒ the line renders (env INVOICE_GSTIN path)
+      billTo: {
+        name: 'Rajasekharan Venkataraman Iyengar Supramaniam Swaminathan The Great',
+        email: 'rajasekharan.venkataraman.iyengar.supramaniam@very-long-domain-name.example.com',
+      },
+      product: { title: 'Kids Tracing & Handwriting Practice Worksheets (Ages 3-5) — 200+ Printable Pages Bundle with Bonuses' },
+      payment: { method: 'Razorpay (UPI/Card/Netbanking)', reference: 'pay_NxYyZz1234567890' },
+    }
+    const bytes = await buildInvoicePdf(wide)
+    const loaded = await PDFDocument.load(bytes)
+    expect(loaded.getPageCount()).toBe(1)
+  })
+
   test('loadInvoiceData throws for a missing order (no silent fallback)', async () => {
     await expect(loadInvoiceData('no-such-order-id')).rejects.toThrow('not found')
+  })
+})
+
+describe('fitOneLine — no more overlapping words in the PDF', () => {
+  // Real Helvetica metrics, exactly the fonts buildInvoicePdf embeds.
+  let regular: PDFFont
+  let bold: PDFFont
+  beforeAll(async () => {
+    const pdf = await PDFDocument.create()
+    regular = await pdf.embedFont(StandardFonts.Helvetica)
+    bold = await pdf.embedFont(StandardFonts.HelveticaBold)
+  })
+
+  test('short text passes through untouched at the requested size', () => {
+    expect(fitOneLine('Sample Customer', bold, 11, 300)).toEqual({ text: 'Sample Customer', size: 11 })
+  })
+
+  test('shrinks the font before it ever truncates (readability first)', () => {
+    const text = 'Kids Tracing & Handwriting Practice Worksheets (Ages 3-5) Bundle'
+    const fit = fitOneLine(text, bold, 10.5, 326, 7.5)
+    expect(fit.size).toBeLessThan(10.5)
+    expect(fit.size).toBeGreaterThanOrEqual(7.5)
+    expect(fit.text).toBe(text) // whole string kept — just smaller
+    expect(bold.widthOfTextAtSize(fit.text, fit.size)).toBeLessThanOrEqual(326)
+  })
+
+  test('ellipsizes only when even the minimum size cannot fit, and the result fits', () => {
+    const text = 'A'.repeat(400)
+    const fit = fitOneLine(text, regular, 9, 120, 7)
+    expect(fit.size).toBe(7)
+    expect(fit.text.endsWith('...')).toBe(true)
+    expect(fit.text.length).toBeLessThan(400)
+    expect(regular.widthOfTextAtSize(fit.text, fit.size)).toBeLessThanOrEqual(120)
+  })
+
+  test('the INVOICE DETAILS lines fit their box on one line each (the overlap fix)', () => {
+    // Box interior width the renderer wraps at (boxRightW - 28 with the
+    // production layout): 235.28 - 28 → 207.
+    const BOX_W = 207
+    const lines = [
+      'Currency: INR (Indian Rupee)',
+      'Currency: USD (US Dollar)',
+      'Payment method: Razorpay (UPI/Card/Netbanking)',
+      'Payment method: PayPal (International)',
+      'Order ID: cmhf5q2vw0000c0d7k9e3x1tq', // 25-char CUID — the new Order ID detail line fits the box
+      'Order placed: 02 November 2026',
+      'Delivery: Instant download link by email',
+    ]
+    for (const line of lines) {
+      expect(regular.widthOfTextAtSize(toWinAnsi(line), 8.5)).toBeLessThanOrEqual(BOX_W)
+    }
   })
 })

@@ -34,14 +34,17 @@ export const checkoutCreateSchema = z
     productId: z.string().trim().min(1).max(80),
     customerName: z.string().trim().min(2, 'Please enter your name').max(80),
     customerEmail: z.string().trim().email('Please enter a valid email address').max(120),
-    country: z.string().trim().length(2, 'Please confirm your billing country'),
+    // Task 3: the client no longer CHOOSES the country — the server reads
+    // the platform geo header. Old cached bundles may still send `country`;
+    // it is accepted (shape stays valid) and IGNORED server-side.
+    country: z.string().trim().length(2).optional(),
     consent: z.literal(true),
   })
   .strict()
 
 export type CheckoutCreateInput = z.infer<typeof checkoutCreateSchema>
 
-export const quoteSchema = z.object({ productId: z.string().trim().min(1).max(80), country: z.string().trim().length(2) }).strict()
+export const quoteSchema = z.object({ productId: z.string().trim().min(1).max(80), country: z.string().trim().length(2).optional() }).strict()
 
 const OPEN_ORDER_WINDOW_MS = 30 * 60 * 1000
 const MAX_PENDING_PER_EMAIL = 5
@@ -297,10 +300,12 @@ export async function storeIdempotent(key: string, requestHash: string, status: 
  */
 export async function createCheckout(
   input: CheckoutCreateInput,
-  opts: { ipCountry: string | null; visitorCookie: string | null },
+  opts: { serverCountry: string; ipCountry: string | null; visitorCookie: string | null },
 ): Promise<CheckoutCreateResult> {
-  const country = normalizeCountry(input.country)
-  if (!country) throw new ApiError(422, 'Please confirm your billing country.', 'BAD_COUNTRY')
+  // Task 3: the SERVER decides the country (platform geo header) — the
+  // client-sent `country` (if any) is ignored. Unknown ⇒ 'US' ⇒ USD.
+  const country = normalizeCountry(opts.serverCountry)
+  if (!country) throw new ApiError(422, 'Could not detect your billing country — please use a marketplace button below.', 'BAD_COUNTRY')
 
   const product = await productForCheckout(input.productId)
   const decision = resolveGateway(country, product, gatewayConfigFromEnv())

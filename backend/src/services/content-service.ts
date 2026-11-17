@@ -1,7 +1,6 @@
 // Business rules for site content: FAQs, reviews, public settings.
-import { Prisma } from '@prisma/client'
 import { z } from 'zod'
-import { badRequest, notFound } from '@/lib/api'
+import { badRequest } from '@/lib/api'
 import { faqRepo, reviewRepo, settingsRepo } from '@/repositories/content-repo'
 import { zoneEnum } from '@/validators/product'
 
@@ -36,15 +35,9 @@ const DEFAULTS: Record<SettingKey, string> = {
 }
 
 export const faqCreateSchema = z.object({
-  question: z.string().trim().min(1).max(300),
-  answer: z.string().trim().min(1).max(2000),
+  question: z.string().min(1).max(300),
+  answer: z.string().min(1).max(2000),
   sortOrder: z.coerce.number().int().default(0),
-})
-
-export const faqUpdateSchema = z.object({
-  question: z.string().trim().min(1).max(300),
-  answer: z.string().trim().min(1).max(2000),
-  sortOrder: z.coerce.number().int().min(0),
 })
 
 export const reviewCreateSchema = z.object({
@@ -88,21 +81,6 @@ export async function createFaq(input: z.infer<typeof faqCreateSchema>) {
     answer: input.answer.slice(0, 2000),
     sortOrder: input.sortOrder,
   })
-}
-
-export async function updateFaq(id: string, input: z.infer<typeof faqUpdateSchema>) {
-  try {
-    return await faqRepo.update(id, {
-      question: input.question.slice(0, 300),
-      answer: input.answer.slice(0, 2000),
-      sortOrder: input.sortOrder,
-    })
-  } catch (error) {
-    if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2025') {
-      throw notFound('FAQ not found')
-    }
-    throw error
-  }
 }
 
 export async function createReview(input: z.infer<typeof reviewCreateSchema>) {

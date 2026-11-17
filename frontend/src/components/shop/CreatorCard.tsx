@@ -24,6 +24,8 @@ import { useRotator } from '@/hooks/useRotator'
 import { playFx } from '@/lib/sound-fx'
 import { youtubeThumbnailUrl, imgFallbackToHq } from '@/lib/video-thumb'
 import { cn } from '@/lib/utils'
+import { useVisitorCurrency, visitorPriceLabel } from '@/lib/visitor-currency'
+import { VisitorPrice } from '@/components/shop/VisitorPrice'
 import { CheckoutButtons } from '@/components/checkout/CheckoutButtons'
 import { ShareProductButton } from '@/components/shop/ShareProductButton'
 
@@ -63,6 +65,9 @@ export function CreatorCard({
   openHref?: string
 }) {
   const navigate = useAppStore((s) => s.navigate)
+  // Visitor-currency price (aria + tags) — single currency, never both.
+  const currency = useVisitorCurrency()
+  const priceLabel = visitorPriceLabel(currency, product.priceUsd, product.priceInr)
   const rootRef = useRef<HTMLDivElement | null>(null)
   const videoRef = useRef<HTMLVideoElement | null>(null)
   const [reducedMotion, setReducedMotion] = useState(false)
@@ -284,7 +289,7 @@ export function CreatorCard({
           <FrontTag
             {...frontTagProps}
             inert={flipped || undefined}
-            aria-label={`${product.title} — open details, price ₹${Math.round(product.priceInr)} / $${product.priceUsd.toFixed(2)}`}
+            aria-label={`${product.title} — open details${priceLabel ? `, price ${priceLabel}` : ''}`}
             onKeyDown={onKeyDown}
             className="cyber-card flip-face group flex h-full cursor-pointer flex-col overflow-hidden"
           >
@@ -455,7 +460,7 @@ export function CreatorCard({
           <span className="mono-tag">FORMAT: {product.fileFormats.join('/') || 'DIGITAL'}</span>
           <span className="mono-tag">LICENSE: {product.license.toUpperCase()}</span>
           <span className="mono-tag">
-            PRICE: ₹{Math.round(product.priceInr)} / ${product.priceUsd.toFixed(2)}
+            PRICE: <VisitorPrice usd={product.priceUsd} inr={product.priceInr} />
           </span>
           {rating && rating.count > 0 && rating.avg !== null && (
             <span
@@ -496,8 +501,12 @@ export function CreatorCard({
 
         <div className="mt-auto flex items-center justify-between gap-2 pt-2">
           <div className="flex items-baseline gap-2">
-            <span className="font-jetbrains text-xl font-bold text-[#00F0FF]">₹{Math.round(product.priceInr)}</span>
-            <span className="font-mono text-xs text-muted-foreground">${product.priceUsd.toFixed(2)}</span>
+            <VisitorPrice
+              usd={product.priceUsd}
+              inr={product.priceInr}
+              inrClassName="font-jetbrains text-xl font-bold text-[#00F0FF]"
+              usdClassName="font-mono text-xs text-muted-foreground"
+            />
           </div>
           <div className="flex items-center gap-2">
             <ShareProductButton
@@ -573,8 +582,12 @@ export function CreatorCard({
               </p>
 
               <div className="flex items-baseline gap-2">
-                <span className="font-jetbrains text-xl font-bold text-[#00F0FF]">₹{Math.round(product.priceInr)}</span>
-                <span className="font-mono text-xs text-muted-foreground">${product.priceUsd.toFixed(2)}</span>
+                <VisitorPrice
+                  usd={product.priceUsd}
+                  inr={product.priceInr}
+                  inrClassName="font-jetbrains text-xl font-bold text-[#00F0FF]"
+                  usdClassName="font-mono text-xs text-muted-foreground"
+                />
               </div>
 
               <CheckoutButtons product={product} compact />

@@ -41,8 +41,8 @@ export const PRICING_PAGE: LegalPageData = {
           kind: 'list',
           items: [
             'The complete files listed under “What’s inside” on the product page',
-            'Instant delivery — a secure download link by e-mail the moment your payment is confirmed (48 hours, up to 5 downloads)',
-            'Free link renewal for genuine buyers whose link expires',
+            'Digital delivery — a secure download link by e-mail after your payment is confirmed (default validity: 48 hours, up to 5 downloads)',
+            'Help with replacement links for genuine buyers whose link expires, after verification (see the Refund & Delivery Policy)',
             'The usage licence stated on the product page',
             'Support from a real person — write to {{email}} with your order ID',
           ],

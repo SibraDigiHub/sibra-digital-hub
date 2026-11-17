@@ -8,7 +8,7 @@
 // buyers will get on the live site.
 // ═══════════════════════════════════════════════════════════
 
-import { adminFetch } from '@/lib/admin-api'
+import { adminFetch, getAdminCsrfToken } from '@/lib/admin-api'
 import { hydrateCategories, useZoneCategories } from '@/lib/categories'
 import { fetchUsdInrRate } from '@/lib/fx-rate'
 import { useEffect, useRef, useState } from 'react'
@@ -182,7 +182,7 @@ function initForm(product: ProductRow | null): { form: FormState; spatial: Spati
 // Browser → ImageKit direct upload (PRD §13.3): fetch signed params from
 // GET /api/imagekit/auth, then POST the file straight to ImageKit's upload
 // endpoint — no server proxy, so large videos stream straight to the CDN.
-async function uploadFile(file: File, folder: 'images' | 'video' | 'files'): Promise<{ url: string; name: string }> {
+async function uploadFile(file: File, folder: 'images' | 'video' | 'files'): Promise<{ url: string; name: string; fileId?: string }> {
   // Step A — signed upload params (requires ImageKit credentials in .env)
   const authRes = await adminFetch('/api/imagekit/auth')
   const auth = (await authRes.json().catch(() => null)) as {
@@ -208,9 +208,12 @@ async function uploadFile(file: File, folder: 'images' | 'video' | 'files'): Pro
   fd.append('expire', String(auth.expire))
   fd.append('token', auth.token)
   const upRes = await fetch('https://upload.imagekit.io/api/v1/files/upload', { method: 'POST', body: fd })
-  const up = (await upRes.json().catch(() => null)) as { url?: string; name?: string; message?: string } | null
+  // fileId is captured (storage-cleanup registry) — the cleanup service can
+  // delete THIS file later without a path lookup. Additive: legacy callers
+  // that only read url/name keep working.
+  const up = (await upRes.json().catch(() => null)) as { url?: string; name?: string; fileId?: string; message?: string } | null
   if (!upRes.ok || !up?.url) throw new Error(up?.message ?? 'ImageKit upload failed')
-  return { url: up.url, name: up.name ?? safeName }
+  return { url: up.url, name: up.name ?? safeName, fileId: typeof up.fileId === 'string' ? up.fileId : undefined }
 }
 
 
@@ -613,6 +616,47 @@ export default function ProductForm({ product, onDone }: ProductFormProps) {
   const [deliverableUploading, setDeliverableUploading] = useState(false)
   const [imageUrl, setImageUrl] = useState('')
 
+  // ── Storage-cleanup: uploads made during THIS form session ──
+  // Every successful upload is tracked here; kept entries are sent as
+  // `mediaFileIds` (ImageKit fileId registry) on save, entries that the
+  // save did NOT keep are discarded best-effort, and on abandon
+  // (Cancel / close / navigation) the whole list is beaconed to the
+  // discard endpoint — refcount-checked server-side, so a file another
+  // record saved meanwhile is never deleted.
+  const sessionUploadsRef = useRef<Array<{ ref: string; fileId?: string }>>([])
+  const trackSessionUpload = (ref: string, fileId?: string) => {
+    if (ref) sessionUploadsRef.current = [...sessionUploadsRef.current.filter((u) => u.ref !== ref), { ref, fileId }]
+  }
+  const discardSessionUploads = (refs: Array<{ ref: string; fileId?: string }>) => {
+    if (refs.length === 0) return
+    void adminFetch('/api/admin/storage/discard', {
+      method: 'POST',
+      body: JSON.stringify({ refs }),
+    }).catch(() => undefined)
+  }
+  const beaconSessionUploads = () => {
+    const refs = sessionUploadsRef.current
+    if (refs.length === 0 || typeof navigator === 'undefined' || typeof navigator.sendBeacon !== 'function') return
+    const body = JSON.stringify({ refs, csrf: getAdminCsrfToken() ?? undefined })
+    try {
+      navigator.sendBeacon('/api/admin/storage/discard', new Blob([body], { type: 'application/json' }))
+    } catch {
+      /* best effort by design */
+    }
+  }
+  // Abandon paths: tab close/navigation (pagehide) and component unmount
+  // without a save (Cancel / Back / section switch). After a successful
+  // save the list only holds uploads the save did NOT keep — discarding
+  // them is correct there too.
+  useEffect(() => {
+    const onHide = () => beaconSessionUploads()
+    window.addEventListener('pagehide', onHide)
+    return () => {
+      window.removeEventListener('pagehide', onHide)
+      if (sessionUploadsRef.current.length > 0) beaconSessionUploads()
+    }
+  }, [])
+
   const imgInputRef = useRef<HTMLInputElement>(null)
   const videoInputRef = useRef<HTMLInputElement>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
@@ -731,6 +775,7 @@ export default function ProductForm({ product, onDone }: ProductFormProps) {
     for (const file of take) {
       try {
         const data = await uploadFile(file, 'images')
+        trackSessionUpload(data.url, data.fileId)
         setForm((f) =>
           f.images.length >= MAX_IMAGES ? f : { ...f, images: [...f.images, data.url] },
         )
@@ -753,6 +798,7 @@ export default function ProductForm({ product, onDone }: ProductFormProps) {
     setVideoUploading(true)
     try {
       const data = await uploadFile(file, 'video')
+      trackSessionUpload(data.url, data.fileId)
       setField('videoPreviewUrl', data.url)
       toast({ title: 'Video uploaded' })
     } catch (err) {
@@ -769,6 +815,7 @@ export default function ProductForm({ product, onDone }: ProductFormProps) {
     setDeliverableUploading(true)
     try {
       const data = await uploadDeliverableToR2(file)
+      trackSessionUpload(data.url) // r2:<key> — no fileId needed (deletable by key)
       setForm((f) => ({ ...f, deliverableUrl: data.url, deliverableName: data.name || file.name }))
       setErrors((er) => {
         const next = { ...er }
@@ -823,6 +870,10 @@ export default function ProductForm({ product, onDone }: ProductFormProps) {
     }
     setSaving(true)
     const usd = Math.round(parseFloat(form.priceUsd) * 100) / 100
+    // ImageKit fileIds for uploads made in this form session (registry payload).
+    const mediaFileIds = Object.fromEntries(
+      sessionUploadsRef.current.filter((u) => u.fileId).map((u) => [u.ref, u.fileId as string]),
+    )
     const payload = {
       title: form.title.trim(),
       slug: form.slug.trim(),
@@ -848,13 +899,16 @@ export default function ProductForm({ product, onDone }: ProductFormProps) {
           .map((l) => ({ platform: l.platform, url: l.url.trim() })),
       ),
       instantDownload: form.instantDownload,
-      deliverableUrl: form.instantDownload ? form.deliverableUrl.trim() || null : null,
-      deliverableName: form.instantDownload ? form.deliverableName.trim() || null : null,
-      // T-V: video-delivery fields (existing products keep 'file').
+      // Instant-delivery values survive toggles and mode switches (owner rule):
+      // the payload always sends what the form holds — the backend keeps these
+      // fields independently of instantDownload, so a toggle never erases data.
+      deliverableUrl: form.deliverableUrl.trim() || null,
+      deliverableName: form.deliverableName.trim() || null,
+      // T-V: video-delivery fields (values persist across mode switches).
       deliveryMode: form.deliveryMode,
-      fullVideoUrl: form.instantDownload && form.deliveryMode === 'watch' ? form.fullVideoUrl.trim() || null : null,
-      watchTtlHours: form.instantDownload && form.deliveryMode === 'watch' && form.watchTtlHours ? parseInt(form.watchTtlHours, 10) || null : null,
-      watchMaxConcurrent: form.instantDownload && form.deliveryMode === 'watch' ? Math.min(Math.max(parseInt(form.watchMaxConcurrent, 10) || 2, 1), 10) : 2,
+      fullVideoUrl: form.fullVideoUrl.trim() || null,
+      watchTtlHours: form.watchTtlHours ? parseInt(form.watchTtlHours, 10) || null : null,
+      watchMaxConcurrent: Math.min(Math.max(parseInt(form.watchMaxConcurrent, 10) || 2, 1), 10),
       featured: form.featured,
       sortOrder: parseInt(form.sortOrder, 10) || 0,
       status: form.status,
@@ -872,6 +926,9 @@ export default function ProductForm({ product, onDone }: ProductFormProps) {
       ),
       pageCount: form.pageCount ? parseInt(form.pageCount, 10) || null : null,
       spatialCoords: JSON.stringify(initial.spatial),
+      // ── Storage cleanup (additive): ImageKit fileIds for uploads made in
+      // this session — the server merges them into Product.mediaRefs.
+      ...(Object.keys(mediaFileIds).length > 0 ? { mediaFileIds } : {}),
     }
     try {
       const res = await adminFetch(product ? `/api/products/${product.id}` : '/api/products', {
@@ -881,6 +938,15 @@ export default function ProductForm({ product, onDone }: ProductFormProps) {
       })
       const data = (await res.json().catch(() => null)) as { error?: string } | null
       if (!res.ok) throw new Error(data?.error ?? 'Save failed')
+      // Storage cleanup: uploads this save did NOT keep are abandoned —
+      // discard best-effort (refcount-checked server-side). Kept uploads
+      // stay registered via the mediaFileIds payload above.
+      const kept = new Set<string>(
+        [...form.images, form.videoPreviewUrl.trim(), form.fullVideoUrl.trim(), form.deliverableUrl.trim()].filter(Boolean),
+      )
+      const leftovers = sessionUploadsRef.current.filter((u) => !kept.has(u.ref))
+      sessionUploadsRef.current = []
+      discardSessionUploads(leftovers)
       toast({
         title: form.status === 'published' ? 'Published ✓ — view live' : 'Saved as draft',
         description: form.status === 'published' ? `/${form.slug.trim()}` : undefined,
@@ -1050,6 +1116,16 @@ export default function ProductForm({ product, onDone }: ProductFormProps) {
                 {errText('priceInr') && <p className="mt-1 text-xs text-red-400">{errText('priceInr')}</p>}
               </div>
             </div>
+            {/* Task 3: region-based pricing — a missing regional price blocks
+                direct checkout for that region's buyers. Warn early. */}
+            {(!(parseFloat(form.priceUsd) > 0) || !(parseFloat(form.priceInr) > 0)) && (
+              <p className="mt-2 rounded-lg border border-amber-500/40 bg-amber-500/10 px-2.5 py-1.5 text-[11px] font-semibold text-amber-300" role="status">
+                ⚠️ {[!(parseFloat(form.priceInr) > 0) ? 'INR price missing — Indian buyers cannot check out directly' : null, !(parseFloat(form.priceUsd) > 0) ? 'USD price missing — international buyers cannot check out directly' : null]
+                  .filter(Boolean)
+                  .join(' · ')}
+                . They will see the marketplace buttons instead.
+              </p>
+            )}
           </Section>
 
           {/* c) Descriptions */}
@@ -1295,6 +1371,18 @@ export default function ProductForm({ product, onDone }: ProductFormProps) {
                     >
                       <Plus className="size-4" aria-hidden="true" /> Add
                     </Button>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="icon"
+                      className="size-11 shrink-0 hover:border-red-500/50 hover:text-red-300"
+                      disabled={!form.videoPreviewUrl.trim()}
+                      onClick={() => setField('videoPreviewUrl', '')}
+                      aria-label="Remove video preview"
+                      title="Remove video preview"
+                    >
+                      <X className="size-3.5" aria-hidden="true" />
+                    </Button>
                   </div>
                   <p className="mt-1 text-xs text-[#9AA89E]">
                     YouTube links supported — watch / shorts / youtu.be links embed automatically. Direct MP4/WebM/MOV and
@@ -1479,13 +1567,27 @@ export default function ProductForm({ product, onDone }: ProductFormProps) {
                       <div className="mt-3 space-y-3 rounded-lg border border-cyan-400/25 bg-cyan-500/5 p-3">
                         <div>
                           <Label htmlFor="fullVideoUrl">Full video link (YouTube Unlisted or ImageKit)</Label>
-                          <Input
-                            id="fullVideoUrl"
-                            value={form.fullVideoUrl}
-                            onChange={(e) => setField('fullVideoUrl', e.target.value)}
-                            placeholder="https://youtube.com/watch?v=… (Unlisted)"
-                            className="mt-1.5 h-10 font-mono text-xs"
-                          />
+                          <div className="mt-1.5 flex gap-2">
+                            <Input
+                              id="fullVideoUrl"
+                              value={form.fullVideoUrl}
+                              onChange={(e) => setField('fullVideoUrl', e.target.value)}
+                              placeholder="https://youtube.com/watch?v=… (Unlisted)"
+                              className="h-10 font-mono text-xs"
+                            />
+                            <Button
+                              type="button"
+                              variant="outline"
+                              size="icon"
+                              className="size-11 shrink-0 hover:border-red-500/50 hover:text-red-300"
+                              disabled={!form.fullVideoUrl.trim()}
+                              onClick={() => setField('fullVideoUrl', '')}
+                              aria-label="Remove watch link"
+                              title="Remove watch link"
+                            >
+                              <X className="size-3.5" aria-hidden="true" />
+                            </Button>
+                          </div>
                           <p className="mt-1 text-[11px] text-cyan-300/90 font-semibold">
                             Use an Unlisted video. Private videos will not play for buyers.
                           </p>
@@ -1591,13 +1693,30 @@ export default function ProductForm({ product, onDone }: ProductFormProps) {
                   )}
                   <div>
                     <Label htmlFor="deliverableUrl">…or paste file URL</Label>
-                    <Input
-                      id="deliverableUrl"
-                      value={form.deliverableUrl}
-                      onChange={(e) => setField('deliverableUrl', e.target.value)}
-                      placeholder="https://…/prompts-pack.zip"
-                      className="mt-1.5 h-10 font-mono text-xs"
-                    />
+                    <div className="mt-1.5 flex gap-2">
+                      <Input
+                        id="deliverableUrl"
+                        value={form.deliverableUrl}
+                        onChange={(e) => setField('deliverableUrl', e.target.value)}
+                        placeholder="https://…/prompts-pack.zip"
+                        className="h-10 font-mono text-xs"
+                      />
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="icon"
+                        className="size-11 shrink-0 hover:border-red-500/50 hover:text-red-300"
+                        disabled={!form.deliverableUrl.trim()}
+                        onClick={() => {
+                          setField('deliverableUrl', '')
+                          setField('deliverableName', '')
+                        }}
+                        aria-label="Remove file link"
+                        title="Remove file link"
+                      >
+                        <X className="size-3.5" aria-hidden="true" />
+                      </Button>
+                    </div>
                   </div>
                   <div>
                     <Label htmlFor="deliverableName">File name buyers see</Label>

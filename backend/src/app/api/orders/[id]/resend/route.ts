@@ -6,7 +6,7 @@ import { tooMany, asHandler } from '@/lib/api'
 import { isAdmin, unauthorized } from '@/lib/admin-auth'
 import { resendLimitPerIp } from '@/lib/auth/rate-limit'
 import { clientIp } from '@/lib/auth/session'
-import { generateToken, hashToken } from '@/lib/delivery'
+import { generateToken, hashToken, maxDownloads } from '@/lib/delivery'
 import { sendDeliveryEmail } from '@/lib/email'
 import { logEvent } from '@/lib/activity'
 import { writeAudit } from '@/lib/audit'
@@ -28,30 +28,46 @@ export const POST = asHandler(async (req: NextRequest, { params }: { params: Pro
     if (order.status !== 'paid') return NextResponse.json({ error: 'Order is not paid yet' }, { status: 400 })
     if (!order.product.deliverableUrl) return NextResponse.json({ error: 'No deliverable configured' }, { status: 409 })
 
+    // Did the buyer exhaust the download cap before this resend? The reset
+    // below mints a fresh token + zeroed counter either way — the flag only
+    // personalises the email ("limit reached, fresh quota issued" vs a plain
+    // new link), so the customer never trusts a dead old link again.
+    const limitReached = order.downloadCount >= maxDownloads()
+
     const { plain, hash, expiresAt } = generateToken()
     await db.order.update({
       where: { id },
       data: { downloadTokenHash: hash, tokenExpiresAt: expiresAt, downloadCount: 0 },
     })
 
+    // Same canonical-origin rule as the fulfillment email (order-service):
+    // relative hrefs are dead inside email clients. The dev-only fallback
+    // mirrors the download route's pageRedirect so locally-tested resends
+    // carry a working absolute link; production requires PUBLIC_WEB_URL
+    // (boot guard), so the empty-base case cannot happen there.
+    const siteUrl =
+      process.env.NEXT_PUBLIC_SITE_URL ||
+      process.env.PUBLIC_WEB_URL ||
+      (process.env.NODE_ENV !== 'production' ? 'http://localhost:3000' : '')
+
     const email = await sendDeliveryEmail({
       to: order.customerEmail,
       customerName: order.customerName,
       productTitle: order.product.title,
-      // Same site-qualified URL the delivery/outbox senders use — a relative
-      // href cannot resolve inside an email client (resent links were dead).
-      downloadUrl: `${process.env.NEXT_PUBLIC_SITE_URL || process.env.PUBLIC_WEB_URL || ''}/#/download/${plain}`,
-      // Layer 2: the buyer's verified-review invite (same token, rate page).
-      rateUrl: `${process.env.NEXT_PUBLIC_SITE_URL || process.env.PUBLIC_WEB_URL || ''}/#/rate/${plain}`,
+      downloadUrl: `${siteUrl}/#/download/${plain}`,
+      // Layer 2: the buyer's verified-review invite (same token, rate page) —
+      // parity with the original delivery email.
+      rateUrl: `${siteUrl}/#/rate/${plain}`,
       amountInr: order.amountInr,
       orderId: order.id,
+      limitReached,
     })
     await db.order.update({ where: { id }, data: { emailSent: email.sent } })
 
     await writeAudit({ action: 'order.email_resent', entity: 'order', entityId: id, label: order.customerEmail, req })
     await logEvent({ type: 'email_resent', email: order.customerEmail, orderId: order.id, productId: order.productId, visitorId: order.visitorId })
 
-    return NextResponse.json({ ok: true, emailDemo: email.demo })
+    return NextResponse.json({ ok: true, emailDemo: email.demo, limitReset: limitReached })
   } catch (e) {
     logger.error({ err: e }, 'resend failed')
     return NextResponse.json({ error: 'Failed to resend email' }, { status: 500 })

@@ -66,6 +66,12 @@ model Product {
   watchTtlHours     Int?
   // how many devices may watch at the same time
   watchMaxConcurrent Int    @default(2)
+  // ── Storage cleanup (additive) — managed-file registry ──
+  // JSON map { "<url-or-ref>": { "p": "ik"|"r2", "id"?: "<fileId>", "path"?: "<path>" } }
+  // Tracks the storage file behind each media field so removals/replacements
+  // can schedule refcounted deletion of the OLD file AFTER the DB commit.
+  // Server-side only: never included in any public DTO (public shapes unchanged).
+  mediaRefs          String   @default("{}")
   orders            Order[]
   createdAt         DateTime @default(now())
   updatedAt         DateTime @updatedAt
@@ -395,10 +401,36 @@ model WebhookEvent {
 // raises one suppressed admin alert e-mail.
 // ─────────────────────────────────────────────
 model CronHeartbeat {
-  key           String    @id // 'reconcile-payments' | 'retry-emails'
+  key           String    @id // 'reconcile-payments' | 'retry-emails' | 'storage-cleanup'
   lastSuccessAt DateTime // last run that completed its sweep without throwing
   staleAlertedAt DateTime? // last time the >2 h reconcile-gap alert fired (suppresses repeats)
   updatedAt     DateTime  @updatedAt
+}
+
+// ─────────────────────────────────────────────
+// STORAGE CLEANUP (additive) — refcounted deletion
+// queue for managed files (ImageKit + Cloudflare R2).
+// Rows are created ONLY after the referencing DB
+// transaction committed and a reference scan found
+// no remaining usage; the storage-cleanup cron
+// retries network/429/5xx failures with backoff.
+// ─────────────────────────────────────────────
+model StorageCleanup {
+  id            String   @id @default(cuid())
+  provider      String // 'imagekit' | 'r2'
+  fileRef       String // 'r2:<key>' | ImageKit https URL | 'ik:<path>'
+  fileId        String? // ImageKit fileId when known (path lookup otherwise)
+  reason        String // 'product_update' | 'product_purge' | 'upload_discard' | 'orphan_sweep'
+  entityId      String? // product id (trace only, no secrets/PII)
+  attempts      Int      @default(0)
+  status        String   @default("pending") // 'pending' | 'done' | 'unresolved' | 'failed'
+  lastError     String?
+  nextAttemptAt DateTime @default(now())
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  @@unique([provider, fileRef])
+  @@index([status, nextAttemptAt])
 }
 
 // ─────────────────────────────────────────────

@@ -33,9 +33,6 @@ yarn-error.log*
 # env files (can opt-in for committing if needed)
 .env*
 
-# DOCS
-docs/
-setup-local-and-vercel-deploy-after-download-from-GLM 5.3.md/
 
 # system
 .marcscope/
@@ -170,6 +167,12 @@ reports/
 /README.md
 /setup-local-and-vercel-deploy-after-download-from-GLM 5.3.md
 /worklog.md
+
+# DOCS
+docs/
+setup-local-and-vercel-deploy-after-download-from-GLM 5.3.md/
+question_answer.md/
+ENV_SETUP.md/
 
 # ===== USER-REQUESTED PRIVATE FOLDERS =====
 /docs/

@@ -28,6 +28,9 @@ export const orderRepo = {
       where: q
         ? {
             OR: [
+              // Support flow: admins locate an order by the Order ID the
+              // customer quoted ("Order ID: …" in every delivery email).
+              { id: { contains: q, mode: 'insensitive' } },
               { customerEmail: { contains: q, mode: 'insensitive' } },
               { customerName: { contains: q, mode: 'insensitive' } },
             ],

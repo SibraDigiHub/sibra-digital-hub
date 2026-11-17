@@ -14,7 +14,7 @@ export const REFUND_PAGE: LegalPageData = {
   sections: [
     {
       id: 'instant-delivery',
-      title: 'Instant digital delivery',
+      title: 'Digital delivery',
       blocks: [
         {
           kind: 'p',

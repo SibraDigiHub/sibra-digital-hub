@@ -6,6 +6,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createHash } from 'node:crypto'
 import { asHandler, badRequest, parseBody, tooMany } from '@/lib/api'
 import { checkoutCreateSchema, createCheckout, replayIdempotent, storeIdempotent } from '@/services/checkout-service'
+import { visitorCountry, platformGeoHeader } from '@/services/visitor-geo'
 import { checkoutCreateLimitPerIp } from '@/lib/auth/rate-limit'
 import { clientIp } from '@/lib/auth/session'
 import { originAllowed, setClaimCookie } from '@/lib/claim-cookie'
@@ -29,8 +30,13 @@ export const POST = asHandler(async (req: NextRequest) => {
   const replay = await replayIdempotent(idempotencyKey, requestHash)
   if (replay) return NextResponse.json(replay.body, { status: replay.status })
 
+  // Task 3: server-detected country decides gateway/currency/amount; the
+  // body's `country` is ignored. billingCountry = server country; ipCountry
+  // stays the header value (raw IPs are never stored — existing hashes only).
+  const serverCountry = await visitorCountry(req)
   const result = await createCheckout(input, {
-    ipCountry: req.headers.get('x-vercel-ip-country') || req.headers.get('cf-ipcountry') || null,
+    serverCountry,
+    ipCountry: platformGeoHeader(req),
     visitorCookie: req.cookies.get('sdh_vid')?.value ?? null,
   })
 
