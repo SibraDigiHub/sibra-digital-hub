@@ -44,6 +44,11 @@ export const productInputSchema = z.object({
   fileFormats: jsonArrayOfStrings.optional(),
   pageCount: z.coerce.number().int().positive().optional().nullable(),
   spatialCoords: z.union([z.string(), z.object({ x: z.number(), y: z.number(), z: z.number() })]).optional(),
+  // ── Storage cleanup (additive, admin-only) ──
+  // ImageKit fileId registry for files uploaded during THIS form session:
+  // { "<uploaded-url-or-ref>": "<imagekit-fileId>" }. Server merges it into
+  // Product.mediaRefs; public DTOs never include it (check:leaks stays green).
+  mediaFileIds: z.record(z.string().max(2048), z.string().min(1).max(128)).optional(),
 })
 
 export type ProductInput = z.infer<typeof productInputSchema>

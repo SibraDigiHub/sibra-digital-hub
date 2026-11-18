@@ -9,8 +9,11 @@
 //     (INR). Legacy PayPal rows keep their historical gateway reference.
 //   • The invoice reference is issued lazily on first download and then
 //     immutable (Order.invoiceNumber, unique). Sequential per year, so it is
-//     ready for the GST-era series; seller GSTIN renders from the
-//     `invoiceGstin` SiteSetting only when the owner sets it.
+//     ready for the GST-era series; the seller GSTIN line renders from the
+//     INVOICE_GSTIN env (SiteSetting invoiceGstin as legacy fallback) ONLY
+//     when the owner configured it — otherwise the line is omitted entirely.
+//   • The order's Order ID is printed in the INVOICE DETAILS box so the
+//     buyer/admin can match the PDF to a row in the admin Orders table.
 //   • PDF is built with pdf-lib (pure JS — runs on Vercel serverless, no
 //     headless browser). Standard PDF fonts are WinAnsi-encoded, so every
 //     string passes through toWinAnsi() first: the rupee sign becomes "Rs."
@@ -19,6 +22,7 @@
 // ═══════════════════════════════════════════════════════════
 import { PDFDocument, StandardFonts, rgb, type PDFFont, type PDFPage } from 'pdf-lib'
 import { db } from '@/lib/db'
+import { invoiceGstin } from '@/config/env'
 
 export const INVOICE_PREFIX = 'SDH'
 
@@ -180,7 +184,11 @@ export interface InvoiceData {
 }
 
 function paymentMethodLabel(gateway: string): string {
-  return gateway === 'paypal' ? 'PayPal (International)' : 'Razorpay (India — UPI / Card / Netbanking)'
+  // Kept short enough to render on ONE line inside the INVOICE DETAILS box
+  // ("Razorpay (India — UPI / Card / Netbanking)" wrapped to two lines and
+  // pushed the details text out of its fixed-height box — the overlap the
+  // owner saw in the printed invoice).
+  return gateway === 'paypal' ? 'PayPal (International)' : 'Razorpay (UPI/Card/Netbanking)'
 }
 
 function paymentReference(gateway: string, razorpayPaymentId: string | null, paypalCaptureId: string | null, paypalOrderId: string | null): string | null {
@@ -207,7 +215,7 @@ export async function loadInvoiceData(orderId: string): Promise<InvoiceData> {
     seller: {
       name: value('invoiceSellerName') ?? SELLER_FALLBACKS.sellerName,
       business: value('invoiceSellerBusiness') ?? SELLER_FALLBACKS.sellerBusiness,
-      gstin: value('invoiceGstin'),
+      gstin: invoiceGstin() ?? (value('invoiceGstin')?.trim() || null),
       supportEmail: value('contactEmail'),
     },
     billTo: { name: order.customerName, email: order.customerEmail },
@@ -263,8 +271,35 @@ function wrapText(text: string, font: PDFFont, size: number, maxWidth: number): 
   return lines
 }
 
-function drawRight(page: PDFPage, text: string, font: PDFFont, size: number, xRight: number, y: number): void {
-  page.drawText(text, { x: xRight - font.widthOfTextAtSize(text, size), y, size, font, color: C.ink })
+/**
+ * Fit one line into maxWidth: shrink the font stepwise first (keeps the
+ * whole string readable), then ellipsize only when even the smallest size
+ * still overflows. Guards the fixed-width regions of the invoice (BILL TO
+ * box, seller block, purchase-summary description column) against long
+ * customer names / emails / product titles that previously overlapped
+ * neighbouring text. `text` must already be WinAnsi-safe.
+ */
+export function fitOneLine(
+  text: string,
+  font: PDFFont,
+  size: number,
+  maxWidth: number,
+  minSize = 7,
+): { text: string; size: number } {
+  if (font.widthOfTextAtSize(text, size) <= maxWidth) return { text, size }
+  for (let s = size - 0.5; s >= minSize; s -= 0.5) {
+    if (font.widthOfTextAtSize(text, s) <= maxWidth) return { text, size: s }
+  }
+  const suffix = '...'
+  let fitted = text
+  while (fitted.length > 1 && font.widthOfTextAtSize(fitted + suffix, minSize) > maxWidth) {
+    fitted = fitted.slice(0, -1)
+  }
+  return { text: `${fitted}${suffix}`, size: minSize }
+}
+
+function drawRight(page: PDFPage, text: string, font: PDFFont, size: number, xRight: number, y: number, color = C.ink): void {
+  page.drawText(text, { x: xRight - font.widthOfTextAtSize(text, size), y, size, font, color })
 }
 
 function fmtDate(d: Date): string {
@@ -291,27 +326,37 @@ export async function buildInvoicePdf(data: InvoiceData): Promise<Uint8Array> {
   page.drawText(toWinAnsi('DIGITAL PRODUCTS & DOWNLOADS'), { x: MARGIN, y: A4.height - 72, size: 8.5, font: regular, color: C.gray })
   page.drawText('INVOICE', { x: CONTENT_RIGHT - bold.widthOfTextAtSize('INVOICE', 22), y: A4.height - 58, size: 22, font: bold, color: C.navy })
 
-  // Seller block (left)
+  // Seller block (left) — values are fitted so a long seller name from
+  // SiteSetting can never reach the right-hand reference block.
   const sellerLines: Array<[string, string]> = [
     ['Seller: ', data.seller.name],
     ['Brand / Store: ', 'Sibra Digital Hub'],
     ['Business type: ', data.seller.business],
   ]
+  const SELLER_VALUE_MAX = 360 // left block budget: right block starts ≈ x 470
   let y = A4.height - 96
   for (const [label, val] of sellerLines) {
-    page.drawText(toWinAnsi(label), { x: MARGIN, y, size: 9.5, font: bold, color: C.ink })
-    page.drawText(toWinAnsi(val), { x: MARGIN + bold.widthOfTextAtSize(toWinAnsi(label), 9.5), y, size: 9.5, font: regular, color: C.ink })
+    const labelText = toWinAnsi(label)
+    const labelW = bold.widthOfTextAtSize(labelText, 9.5)
+    const fit = fitOneLine(toWinAnsi(val), regular, 9.5, Math.max(60, SELLER_VALUE_MAX - labelW))
+    page.drawText(labelText, { x: MARGIN, y, size: 9.5, font: bold, color: C.ink })
+    page.drawText(fit.text, { x: MARGIN + labelW, y, size: fit.size, font: regular, color: C.ink })
     y -= 13
   }
-  // GSTIN renders only when the owner sets it (or explicit "not applicable" pre-GST)
-  page.drawText('GSTIN: ', { x: MARGIN, y, size: 9.5, font: bold, color: C.ink })
-  page.drawText(toWinAnsi(data.seller.gstin ?? 'Not applicable (seller currently unregistered)'), {
-    x: MARGIN + bold.widthOfTextAtSize('GSTIN: ', 9.5),
-    y,
-    size: 9.5,
-    font: regular,
-    color: C.ink,
-  })
+  // GSTIN renders ONLY when the owner configured one (env INVOICE_GSTIN or
+  // the invoiceGstin SiteSetting) — unset means no GSTIN line at all; the
+  // owner asked for no "Not applicable" placeholder on the PDF.
+  if (data.seller.gstin) {
+    const gstinLabelW = bold.widthOfTextAtSize('GSTIN: ', 9.5)
+    const gstinFit = fitOneLine(
+      toWinAnsi(data.seller.gstin),
+      regular,
+      9.5,
+      Math.max(60, SELLER_VALUE_MAX - gstinLabelW),
+    )
+    page.drawText('GSTIN: ', { x: MARGIN, y, size: 9.5, font: bold, color: C.ink })
+    page.drawText(gstinFit.text, { x: MARGIN + gstinLabelW, y, size: gstinFit.size, font: regular, color: C.ink })
+  }
 
   // Reference block (right)
   const refRows: Array<[string, string]> = [
@@ -333,9 +378,10 @@ export async function buildInvoicePdf(data: InvoiceData): Promise<Uint8Array> {
 
   page.drawLine({ start: { x: MARGIN, y: A4.height - 176 }, end: { x: CONTENT_RIGHT, y: A4.height - 176 }, thickness: 0.8, color: C.rule })
 
-  // BILL TO / INVOICE DETAILS boxes
+  // BILL TO / INVOICE DETAILS boxes — boxH fits 5 detail lines (the Order
+  // ID row was added so the PDF can be matched to the admin Orders table).
   const boxTop = A4.height - 196
-  const boxH = 74
+  const boxH = 88
   const boxLeftW = 252
   const boxRightX = MARGIN + boxLeftW + 12
   const boxRightW = CONTENT_RIGHT - boxRightX
@@ -343,19 +389,31 @@ export async function buildInvoicePdf(data: InvoiceData): Promise<Uint8Array> {
   page.drawRectangle({ x: boxRightX, y: boxTop - boxH, width: boxRightW, height: boxH, color: C.boxBg, borderColor: C.boxBorder, borderWidth: 0.8 })
 
   page.drawText('BILL TO', { x: MARGIN + 14, y: boxTop - 16, size: 8.5, font: bold, color: C.gold })
-  page.drawText(toWinAnsi(data.billTo.name), { x: MARGIN + 14, y: boxTop - 32, size: 11, font: bold, color: C.ink })
-  page.drawText(toWinAnsi(data.billTo.email), { x: MARGIN + 14, y: boxTop - 46, size: 9, font: regular, color: C.gray })
+  // Name/email are fitted to the box interior — a long customer name or
+  // address-style email previously ran over the box border and into the
+  // INVOICE DETAILS box next to it.
+  const BILL_TO_MAX = boxLeftW - 28
+  const nameFit = fitOneLine(toWinAnsi(data.billTo.name), bold, 11, BILL_TO_MAX, 7.5)
+  page.drawText(nameFit.text, { x: MARGIN + 14, y: boxTop - 32, size: nameFit.size, font: bold, color: C.ink })
+  const emailFit = fitOneLine(toWinAnsi(data.billTo.email), regular, 9, BILL_TO_MAX, 7)
+  page.drawText(emailFit.text, { x: MARGIN + 14, y: boxTop - 46, size: emailFit.size, font: regular, color: C.gray })
 
   page.drawText('INVOICE DETAILS', { x: boxRightX + 14, y: boxTop - 16, size: 8.5, font: bold, color: C.gold })
+  // Order ID fitted to the box interior — a long order id must never touch
+  // the box border (same overlap guard as the customer name/email).
+  const orderIdFit = fitOneLine(toWinAnsi(data.orderRef), regular, 8.5, boxRightW - 28, 7)
   const details = [
     `Currency: ${currencyLabel(data.currency)}`,
     `Payment method: ${data.payment.method}`,
+    `Order ID: ${orderIdFit.text}`,
     `Order placed: ${fmtDate(data.orderPlacedAt)}`,
-    'Delivery: Instant — secure download link by email',
+    'Delivery: Instant download link by email',
   ]
+  const detailsBottom = boxTop - boxH + 8 // never draw below the box interior
   let dy = boxTop - 30
-  for (const line of details) {
+  detailLoop: for (const line of details) {
     for (const wrapped of wrapText(toWinAnsi(line), regular, 8.5, boxRightW - 28)) {
+      if (dy < detailsBottom) break detailLoop
       page.drawText(wrapped, { x: boxRightX + 14, y: dy, size: 8.5, font: regular, color: C.ink })
       dy -= 11
     }
@@ -369,13 +427,20 @@ export async function buildInvoicePdf(data: InvoiceData): Promise<Uint8Array> {
   page.drawRectangle({ x: MARGIN, y: headTop - headH, width: CONTENT_RIGHT - MARGIN, height: headH, color: C.navy })
   const headY = headTop - headH + 7
   page.drawText('DESCRIPTION', { x: MARGIN + 10, y: headY, size: 8.5, font: bold, color: C.white })
-  drawRight(page, 'QTY', bold, 8.5, 400, headY)
-  drawRight(page, 'UNIT PRICE', bold, 8.5, 480, headY)
-  drawRight(page, 'AMOUNT', bold, 8.5, CONTENT_RIGHT - 10, headY)
+  // White like DESCRIPTION — ink-on-navy made these three labels nearly
+  // unreadable (a word-visibility defect in the owner's printed invoice).
+  drawRight(page, 'QTY', bold, 8.5, 400, headY, C.white)
+  drawRight(page, 'UNIT PRICE', bold, 8.5, 480, headY, C.white)
+  drawRight(page, 'AMOUNT', bold, 8.5, CONTENT_RIGHT - 10, headY, C.white)
 
   const amount = formatMoney(data.amountMinor, data.currency)
   const rowY = headTop - headH - 24
-  page.drawText(toWinAnsi(data.product.title), { x: MARGIN + 10, y: rowY, size: 10.5, font: bold, color: C.ink })
+  // Description column ends at the QTY column (right-aligned at x 400) —
+  // a long product title previously ran straight through QTY / UNIT PRICE /
+  // AMOUNT. Shrink first, ellipsize only when even 7.5pt cannot fit.
+  const TITLE_MAX = 400 - (MARGIN + 10) - 8
+  const titleFit = fitOneLine(toWinAnsi(data.product.title), bold, 10.5, TITLE_MAX, 7.5)
+  page.drawText(titleFit.text, { x: MARGIN + 10, y: rowY, size: titleFit.size, font: bold, color: C.ink })
   page.drawText(toWinAnsi('Digital download — instant delivery'), { x: MARGIN + 10, y: rowY - 13, size: 8.5, font: regular, color: C.gray })
   drawRight(page, '1', regular, 9.5, 400, rowY)
   drawRight(page, toWinAnsi(amount), regular, 9.5, 480, rowY)

@@ -9,6 +9,8 @@ import { logger } from '@/lib/logger'
 import { orderRepo } from '@/repositories/order-repo'
 import { productRepo } from '@/repositories/product-repo'
 import { applyProductPatch, productExists } from '@/services/product-service'
+import { computeMediaRefs, removedManagedRefs } from '@/services/storage-refs'
+import { notifyFrontendRevalidate, scheduleDelete } from '@/services/storage-cleanup'
 
 export const dynamic = 'force-dynamic'
 
@@ -21,7 +23,27 @@ export const PATCH = asHandler(async (req: NextRequest, { params }: { params: Pr
   if (!before) throw notFound('Product not found')
 
   const { data, action } = applyProductPatch(body)
+  // ── Storage cleanup (additive): merge the admin session's uploaded
+  // fileIds into the registry, keyed to the FINAL field values.
+  if (body.mediaFileIds !== undefined || data.images !== undefined || data.videoPreviewUrl !== undefined || data.fullVideoUrl !== undefined || data.deliverableUrl !== undefined) {
+    data.mediaRefs = computeMediaRefs(before.mediaRefs, body.mediaFileIds as Record<string, string> | undefined, {
+      images: (data.images as string | undefined) ?? before.images,
+      videoPreviewUrl: (data.videoPreviewUrl as string | null | undefined) ?? before.videoPreviewUrl,
+      fullVideoUrl: (data.fullVideoUrl as string | null | undefined) ?? before.fullVideoUrl,
+      deliverableUrl: (data.deliverableUrl as string | null | undefined) ?? before.deliverableUrl,
+    })
+  }
+
   const product = await productRepo.update(id, data)
+
+  // ONLY AFTER the DB commit: schedule refcounted deletion of managed
+  // files this save removed/replaced (never fails the save).
+  const removed = removedManagedRefs(before, product)
+  let scheduled = 0
+  if (removed.length > 0) {
+    scheduled = await scheduleDelete(removed, 'product_update', id)
+    void notifyFrontendRevalidate()
+  }
 
   // Audit trail: record which fields changed
   const changed = Object.keys(data).filter(
@@ -32,7 +54,7 @@ export const PATCH = asHandler(async (req: NextRequest, { params }: { params: Pr
     entity: 'product',
     entityId: id,
     label: product.title,
-    diff: { fields: changed },
+    diff: { fields: changed, ...(scheduled > 0 ? { storageCleanupScheduled: scheduled } : {}) },
     req,
   })
   return json({ product })
@@ -54,8 +76,17 @@ export const DELETE = asHandler(async (req: NextRequest, { params }: { params: P
     if (orderCount > 0) {
       throw conflict(`This product has ${orderCount} order(s) — keep it archived so purchase history stays intact.`)
     }
+    // Snapshot the product's managed files BEFORE the row is gone.
+    const orphans = removedManagedRefs(product, { images: '[]', videoPreviewUrl: null, fullVideoUrl: null, deliverableUrl: null })
     await productRepo.remove(id)
-    await writeAudit({ action: 'product.purge', entity: 'product', entityId: id, label: product.title, diff: { orderCount }, req })
+    // ONLY AFTER the DB commit: refcounted cleanup of the purged product's
+    // files (shared files survive — refcount across duplicate products).
+    let scheduled = 0
+    if (orphans.length > 0) {
+      scheduled = await scheduleDelete(orphans, 'product_purge', id)
+      void notifyFrontendRevalidate()
+    }
+    await writeAudit({ action: 'product.purge', entity: 'product', entityId: id, label: product.title, diff: { orderCount, ...(scheduled > 0 ? { storageCleanupScheduled: scheduled } : {}) }, req })
     return json({ ok: true, purged: true })
   }
 

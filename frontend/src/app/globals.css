@@ -962,3 +962,16 @@ html[data-zone='kids'] .how-card:hover {
     opacity: 0.65;
   }
 }
+
+/* ── Task 3: visitor-currency display (neutral SSR + client resolution) ──
+   Every price renders BOTH variants (₹ + $) with these classes; the
+   pre-paint inline script sets <html data-currency> from the sdh_geo
+   cookie and exactly one span is shown. Server HTML stays geo-neutral
+   (default USD — crawlers/unknown), nothing enters the cached pages. */
+html:not([data-currency]) .sdh-p-inr,
+html[data-currency="USD"] .sdh-p-inr {
+  display: none;
+}
+html[data-currency="INR"] .sdh-p-usd {
+  display: none;
+}

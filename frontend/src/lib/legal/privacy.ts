@@ -21,7 +21,7 @@ export const PRIVACY_PAGE: LegalPageData = {
       blocks: [
         {
           kind: 'p',
-          text: '{{businessName}} is an independent, two-zone digital storefront — a Kids Zone curated for families and a Creator Hub built for designers, developers and job-seekers. Every product is an instant digital download.',
+          text: '{{businessName}} is an independent, two-zone digital storefront — a Kids Zone curated for families and a Creator Hub built for designers, developers and job-seekers. Every product is a digital download.',
         },
         {
           kind: 'list',
@@ -144,6 +144,10 @@ export const PRIVACY_PAGE: LegalPageData = {
         },
         {
           kind: 'p',
+          text: 'Which currency you see is decided from your connection’s country (a two-letter country code our edge derives from your network request — never a raw IP address). India sees INR prices, everyone else sees USD prices; there is no country picker and no live currency conversion. The detected code is also stored in a small first-party cookie (sdh_geo, 1 year) so the correct price renders immediately on your next visit — clearing your cookies simply re-detects it.',
+        },
+        {
+          kind: 'p',
           text: 'We receive a payment status, the amount and reference IDs so we can match the payment to your order. Razorpay may also send you its own payment notification e-mail. We never receive or store your card number, CVV or UPI PIN.',
         },
         {
@@ -181,6 +185,12 @@ export const PRIVACY_PAGE: LegalPageData = {
               'sdh_vid',
               'Anonymous visit ID so statistics and orders make sense',
               'First-party cookie (httpOnly)',
+              '1 year',
+            ],
+            [
+              'sdh_geo',
+              'The two-letter country code that decides which currency you see (₹ or $)',
+              'First-party cookie',
               '1 year',
             ],
             [
@@ -414,7 +424,7 @@ export const PRIVACY_PAGE: LegalPageData = {
       blocks: [
         {
           kind: 'p',
-          text: 'In line with the principles of India’s Digital Personal Data Protection Act, 2023, you may:',
+          text: 'In line with the principles of India’s Digital Personal Data Protection Act, 2023 and the rules made under it, you may:',
         },
         {
           kind: 'list',

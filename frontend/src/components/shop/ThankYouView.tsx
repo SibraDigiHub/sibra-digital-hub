@@ -6,10 +6,10 @@
 // demo-mode email behaviour.
 // ═══════════════════════════════════════════════════════════
 
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import confetti from 'canvas-confetti'
 import { motion } from 'framer-motion'
-import { AlertTriangle, Check, FileText, Loader2, Play, RefreshCcw, Star } from 'lucide-react'
+import { AlertTriangle, Check, Download, FileText, Loader2, Play, RefreshCcw, Star } from 'lucide-react'
 import type { Order } from '@/types/marketplace'
 import { useAppStore } from '@/store/app-store'
 import { useChannels } from '@/lib/use-channels'
@@ -21,18 +21,59 @@ import { Button } from '@/components/ui/button'
 const POLL_INTERVAL_MS = 3000
 const POLL_MAX_TICKS = 60 // 60 × 3s = 3 minutes
 
-export function ThankYouView({ orderId }: { orderId: string | null }) {
+// Owner-request robustness — some store builds drop the `?order=` query when
+// the SPA lands here, leaving the router-parsed prop null (the paid state —
+// product download + invoice — would then never render and the card falls
+// back to "No order reference here"). The view therefore recovers the
+// reference itself: raw hash first, then the checkout dialog's sessionStorage
+// stash. The prop stays the primary source (repo routers parse the query).
+function recoverOrderId(): string | null {
+  try {
+    const m = /[?&]order=([^&]+)/.exec(window.location.hash)
+    const fromHash = m ? decodeURIComponent(m[1]) : null
+    if (fromHash) return fromHash
+    return window.sessionStorage.getItem('sdh_thankyou_order')
+  } catch {
+    return null
+  }
+}
+
+export function ThankYouView({ orderId: orderIdProp }: { orderId: string | null }) {
   const navigate = useAppStore((s) => s.navigate)
+  // Prop first (routers that parse #/thank-you?order=…), then self-recovery.
+  const orderId = orderIdProp ?? recoverOrderId()
 
   const [order, setOrder] = useState<Order | null>(null)
   const [loading, setLoading] = useState(Boolean(orderId))
   const [error, setError] = useState(false)
+  // Layer 4 (owner request — future-proofing): when NOTHING client-side
+  // yields a reference (prop / hash / stash all lost), ask the server. The
+  // checkout always leaves an httpOnly claim cookie in this browser, so
+  // GET /api/orders/lookup returns the claimed order without any URL
+  // param. One attempt; if it cannot resolve, the unchanged "No order
+  // reference" fallback stays.
+  const [lookupId, setLookupId] = useState<string | null>(null)
+  const [lookupState, setLookupState] = useState<'needed' | 'running' | 'skipped' | 'failed'>(
+    orderId ? 'skipped' : 'needed',
+  )
+  const effectiveOrderId = orderId ?? lookupId
   // T-V Feature C — demo-mode watch link stashed by the checkout dialog
   // (real buyers open the link straight from the email). Read once in the
   // state initializer (this view never renders on the server).
   const [watchUrl, setWatchUrl] = useState<string | null>(() => {
     try {
       return window.sessionStorage.getItem('sdh_watch_token')
+    } catch {
+      return null
+    }
+  })
+  // Owner request — the one-click product download stashed by the checkout
+  // dialog when THIS browser's payment verified: the buyer downloads right
+  // here, not only from the email. Absent (stale-free: the dialog clears it
+  // whenever a payment ends without a fresh token) ⇒ email message stays.
+  const [downloadUrl, setDownloadUrl] = useState<string | null>(() => {
+    try {
+      return window.sessionStorage.getItem('sdh_download_url')
     } catch {
       return null
     }
@@ -62,10 +103,10 @@ export function ThankYouView({ orderId }: { orderId: string | null }) {
 
   const fetchOrder = useCallback(
     async (silent = false) => {
-      if (!orderId) return
+      if (!effectiveOrderId) return
       if (!silent) setLoading(true)
       try {
-        const res = await fetch(`/api/orders/${orderId}`)
+        const res = await fetch(`/api/orders/${effectiveOrderId}`)
         if (!res.ok) {
           if (!silent) setError(true)
           return
@@ -83,12 +124,35 @@ export function ThankYouView({ orderId }: { orderId: string | null }) {
         if (!silent) setLoading(false)
       }
     },
-    [orderId],
+    [effectiveOrderId],
   )
 
   useEffect(() => {
     void fetchOrder()
   }, [fetchOrder])
+
+  // Layer 4 — one server lookup when no reference was recovered client-side.
+  // The ref guard keeps this a true one-shot: StrictMode's double-invoked
+  // effects and the lookupState transition must neither restart nor orphan
+  // the in-flight fetch (a dep-driven cleanup once dead-flagged it forever).
+  const lookupStarted = useRef(false)
+  useEffect(() => {
+    if (lookupStarted.current) return
+    lookupStarted.current = true
+    if (orderId) return // prop/hash/stash already resolved — no lookup needed
+    setLookupState('running')
+    fetch('/api/orders/lookup')
+      .then(async (res) => {
+        if (!res.ok) throw new Error('lookup unavailable')
+        const data = (await res.json()) as { order?: Order }
+        if (!data.order) throw new Error('no claimed order')
+        setLookupId(data.order.id)
+        setLookupState('skipped')
+      })
+      .catch(() => {
+        setLookupState('failed')
+      })
+  }, [orderId])
 
   // Poll while payment is pending (max 3 minutes)
   useEffect(() => {
@@ -116,7 +180,12 @@ export function ThankYouView({ orderId }: { orderId: string | null }) {
 
   return (
     <div className="mx-auto w-full max-w-6xl px-4 py-12 md:px-6">
-      {!orderId ? (
+      {loading || lookupState === 'running' ? (
+        <div className={cn(card, 'flex flex-col items-center gap-4')} role="status" aria-live="polite">
+          <Loader2 className="size-8 animate-spin text-primary" aria-hidden="true" />
+          <p className="text-sm text-muted-foreground">Fetching your order…</p>
+        </div>
+      ) : !effectiveOrderId ? (
         <div className={cn(card, 'flex flex-col items-center gap-4')}>
           <span className="text-6xl" aria-hidden="true">
             🧾
@@ -128,11 +197,6 @@ export function ThankYouView({ orderId }: { orderId: string | null }) {
           <Button onClick={backToShop} className="h-11 min-w-[170px]">
             Back to shop
           </Button>
-        </div>
-      ) : loading ? (
-        <div className={cn(card, 'flex flex-col items-center gap-4')} role="status" aria-live="polite">
-          <Loader2 className="size-8 animate-spin text-primary" aria-hidden="true" />
-          <p className="text-sm text-muted-foreground">Fetching your order…</p>
         </div>
       ) : error ? (
         <div className={cn(card, 'flex flex-col items-center gap-4')}>
@@ -174,8 +238,24 @@ export function ThankYouView({ orderId }: { orderId: string | null }) {
               </p>
               <p className="text-sm text-muted-foreground">
                 Your file was emailed to <span className="font-semibold text-foreground">{order.customerEmail}</span>.
-                Link valid 48h / 5 downloads — use the link from your email to download anytime.
+                Link valid 48h / 5 downloads —{' '}
+                {downloadUrl
+                  ? 'download it right here or use the email link anytime.'
+                  : 'use the link from your email to download anytime.'}
               </p>
+
+              {/* Owner request — download the product right from the thank-you
+                  page (the stashed SPA claim page validates, then the click
+                  claims one slot and opens the private file). Watch-mode
+                  orders deliver through their Watch button instead. */}
+              {order.product?.deliveryMode !== 'watch' && downloadUrl && (
+                <a
+                  href={downloadUrl}
+                  className="inline-flex h-12 min-w-[200px] items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-emerald-500 to-amber-400 text-base font-bold text-white shadow-[0_8px_24px_rgba(16,185,129,0.35)] transition-transform hover:scale-[1.02]"
+                >
+                  <Download className="size-5" aria-hidden="true" /> Download your file
+                </a>
+              )}
 
               {order.emailSent === false && (
                 <p

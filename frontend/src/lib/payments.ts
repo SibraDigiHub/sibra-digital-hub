@@ -1,5 +1,7 @@
 'use client'
 
+import { clientTimezoneHeaders } from '@/lib/visitor-currency'
+
 // ═══════════════════════════════════════════════════════════
 // Single-gateway client helpers (§5.1/§5.2):
 //   • /api/payments/config  — public gateway booleans;
@@ -8,7 +10,10 @@
 //   • /api/checkout/create  — order creation (Idempotency-Key);
 //   • Razorpay Standard Checkout loader — on demand, checkout step only.
 // The client never chooses gateway/currency/amount — every value
-// here is echoed from the server.
+// here is echoed from the server. The client DOES send its device
+// timezone as a hint (x-client-timezone): the server applies it only
+// when its own platform geo header is absent, so the CHARGED currency
+// matches what the visitor is shown.
 // ═══════════════════════════════════════════════════════════
 
 export interface PaymentsConfig {
@@ -72,11 +77,13 @@ export async function fetchPaymentsConfig(): Promise<PaymentsConfig> {
   return data
 }
 
-/** Geo-IP hint ONLY — the customer still confirms the country (§2.2). */
+/** Geo-IP hint — kept for compatibility; the dialog now resolves via
+ *  lib/visitor-currency (cookie + /api/geo) and the SERVER decides the
+ *  charged currency. Response shape unchanged. */
 export async function fetchGeoCountry(): Promise<string | null> {
   if (geoCountryCache) return geoCountryCache
   try {
-    const res = await fetch('/api/geo')
+    const res = await fetch('/api/geo', { cache: 'no-store', headers: clientTimezoneHeaders() })
     const data = (await res.json().catch(() => null)) as { country?: string } | null
     geoCountryCache = data?.country && /^[A-Z]{2}$/.test(data.country) ? data.country : null
     return geoCountryCache
@@ -85,27 +92,32 @@ export async function fetchGeoCountry(): Promise<string | null> {
   }
 }
 
-export async function fetchQuote(productId: string, country: string): Promise<{ ok: true; quote: Quote } | { ok: false; error: string; code?: string }> {
+/** §5.1 quote — the SERVER detects the country (Task 3); the client sends
+ *  only the product. `country` argument kept optional for compatibility
+ *  but is no longer sent: the backend ignores client countries entirely. */
+export async function fetchQuote(productId: string, country?: string): Promise<{ ok: true; quote: Quote } | { ok: false; error: string; code?: string }> {
+  const body: Record<string, unknown> = { productId }
+  void country // ignored server-side — never trusted
   const res = await fetch('/api/checkout/quote', {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ productId, country }),
+    headers: { 'Content-Type': 'application/json', ...clientTimezoneHeaders() },
+    body: JSON.stringify(body),
   })
   const data = (await res.json().catch(() => null)) as (Quote & { error?: string }) | { error?: string; code?: string } | null
   if (!res.ok || !data || !('gateway' in (data as Quote))) {
     const err = data as { error?: string; code?: string } | null
-    return { ok: false, error: err?.error ?? 'Could not fetch the price for this country.', code: err?.code }
+    return { ok: false, error: err?.error ?? 'Could not fetch the price for your region.', code: err?.code }
   }
   return { ok: true, quote: data as Quote }
 }
 
 export async function createCheckout(
-  body: { productId: string; customerName: string; customerEmail: string; country: string; consent: true },
+  body: { productId: string; customerName: string; customerEmail: string; consent: true },
   idempotencyKey: string,
 ): Promise<{ res: Response; data: CheckoutCreateResponse }> {
   const res = await fetch('/api/checkout/create', {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json', 'Idempotency-Key': idempotencyKey },
+    headers: { 'Content-Type': 'application/json', 'Idempotency-Key': idempotencyKey, ...clientTimezoneHeaders() },
     body: JSON.stringify(body),
   })
   const data = (await res.json().catch(() => ({}))) as CheckoutCreateResponse

@@ -19,7 +19,9 @@ import type { KeyboardEvent as ReactKeyboardEvent, MouseEvent as ReactMouseEvent
 import { motion } from 'framer-motion'
 import { X } from 'lucide-react'
 import type { Product, RatingSummary } from '@/types/marketplace'
-import { categoriesForZone, formatMoney } from '@/types/marketplace'
+import { categoriesForZone } from '@/types/marketplace'
+import { useVisitorCurrency, visitorPriceLabel } from '@/lib/visitor-currency'
+import { VisitorPrice } from '@/components/shop/VisitorPrice'
 import { useAppStore } from '@/store/app-store'
 import { playFx } from '@/lib/sound-fx'
 import { cn } from '@/lib/utils'
@@ -92,7 +94,9 @@ export function SmartProductCard({
     if (dx < 0) next()
     else prev()
   }
-  const money = formatMoney(product.priceUsd, product.priceInr)
+  // Visitor-currency price label (aria) — single currency, never both.
+  const currency = useVisitorCurrency()
+  const priceLabel = visitorPriceLabel(currency, product.priceUsd, product.priceInr)
   const catMeta = categoriesForZone(product.zone).find((c) => c.slug === product.category)
 
   // Progressive scroll reveal
@@ -288,8 +292,12 @@ export function SmartProductCard({
             narrow 2-column mobile cards */}
         <div className="mt-1 flex flex-col gap-1.5">
           <div className="flex items-baseline gap-2">
-            <span className="text-lg font-extrabold text-[#E67300]">{money.inr}</span>
-            <span className="text-xs font-semibold text-[#7d6440]">{money.usd}</span>
+            <VisitorPrice
+              usd={product.priceUsd}
+              inr={product.priceInr}
+              inrClassName="text-lg font-extrabold text-[#E67300]"
+              usdClassName="text-xs font-semibold text-[#7d6440]"
+            />
           </div>
           <button
             type="button"
@@ -317,7 +325,7 @@ export function SmartProductCard({
       }}
       onKeyDown={frontKeyDown}
       inert={flipped || undefined}
-      aria-label={`${product.title} — open details, price ${money.inr}`}
+      aria-label={`${product.title} — open details${priceLabel ? `, price ${priceLabel}` : ''}`}
       className="clay-card flip-face relative flex h-full cursor-pointer flex-col overflow-hidden"
     >
       {frontBody}
@@ -329,7 +337,7 @@ export function SmartProductCard({
       role="button"
       tabIndex={flipped ? -1 : 0}
       inert={flipped || undefined}
-      aria-label={`${product.title} — open details, price ${money.inr}`}
+      aria-label={`${product.title} — open details${priceLabel ? `, price ${priceLabel}` : ''}`}
       className="clay-card flip-face relative flex h-full cursor-pointer flex-col overflow-hidden"
     >
       {frontBody}
@@ -394,8 +402,12 @@ export function SmartProductCard({
         </p>
 
         <div className="flex items-baseline gap-2">
-          <span className="text-lg font-extrabold text-[#E67300]">{money.inr}</span>
-          <span className="text-xs font-semibold text-[#7d6440]">{money.usd}</span>
+          <VisitorPrice
+            usd={product.priceUsd}
+            inr={product.priceInr}
+            inrClassName="text-lg font-extrabold text-[#E67300]"
+            usdClassName="text-xs font-semibold text-[#7d6440]"
+          />
         </div>
 
         <CheckoutButtons product={product} compact />

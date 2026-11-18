@@ -34,6 +34,7 @@ import DownloadView from '@/components/DownloadView'
 import RateReviewView from '@/components/RateReviewView'
 import { CatalogEngine } from '@/components/shop/CatalogEngine'
 import { hydrateCategories } from '@/lib/categories'
+import { clientTimezoneHeaders } from '@/lib/visitor-currency'
 import { ProductDetailView } from '@/components/shop/ProductDetailView'
 import { ThankYouView } from '@/components/shop/ThankYouView'
 import KidsSkyDecor from '@/components/shop/KidsSkyDecor'
@@ -110,8 +111,10 @@ export default function Home() {
       /* ignore */
     }
 
-    // Geo for checkout ordering (non-blocking)
-    void fetch('/api/geo')
+    // Geo for checkout ordering (non-blocking). The backend honours our
+    // x-client-timezone header (device clock — strongest client signal),
+    // so the India/international ordering matches the displayed currency.
+    void fetch('/api/geo', { cache: 'no-store', headers: clientTimezoneHeaders() })
       .then((r) => r.json())
       .then((d) => store.setIsIndia(Boolean(d.isIndia)))
       .catch(() => store.setIsIndia(false))

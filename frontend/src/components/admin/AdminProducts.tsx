@@ -454,6 +454,22 @@ export default function AdminProducts({ onEditProduct }: AdminProductsProps) {
                     </TableCell>
                     <TableCell className="whitespace-nowrap text-sm">
                       {money.inr} <span className="text-xs text-[#9AA89E]">{money.usd}</span>
+                      {/* Task 3: with region-based pricing a missing regional
+                          price means buyers in that region cannot check out —
+                          warn the admin (additive, admin-only). */}
+                      {(!(p.priceInr > 0) || !(p.priceUsd > 0)) && (
+                        <span
+                          className="ml-2 inline-block rounded-full border border-amber-500/50 bg-amber-500/10 px-2 py-0.5 text-[10px] font-bold text-amber-300"
+                          role="status"
+                        >
+                          {[
+                            !(p.priceInr > 0) ? 'missing INR price' : null,
+                            !(p.priceUsd > 0) ? 'missing USD price' : null,
+                          ]
+                            .filter(Boolean)
+                            .join(' · ')}
+                        </span>
+                      )}
                     </TableCell>
                     <TableCell>
                       <Button

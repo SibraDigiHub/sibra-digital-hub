@@ -11,13 +11,13 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { motion } from 'framer-motion'
-import { Download, ShieldCheck, Clock, AlertTriangle, ArrowLeft, Mail, Loader2 } from 'lucide-react'
+import { Download, ShieldCheck, Clock, AlertTriangle, ArrowLeft, FileText, Mail, Loader2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { useAppStore } from '@/store/app-store'
 
 type State =
   | { kind: 'loading' }
-  | { kind: 'ready'; name: string | null }
+  | { kind: 'ready'; name: string | null; invoiceUrl: string | null }
   | { kind: 'error'; message: string }
   | { kind: 'missing' }
 
@@ -26,6 +26,9 @@ export default function DownloadView() {
   const navigate = useAppStore((s) => s.navigate)
   const [state, setState] = useState<State>(() => (token ? { kind: 'loading' } : { kind: 'missing' }))
   const [claiming, setClaiming] = useState(false)
+  const [invoiceBusy, setInvoiceBusy] = useState(false)
+  const [invoiceDone, setInvoiceDone] = useState(false)
+  const [invoiceError, setInvoiceError] = useState<string | null>(null)
   const started = useRef(false)
 
   useEffect(() => {
@@ -36,7 +39,7 @@ export default function DownloadView() {
         // Validation GET — consumes nothing (the claim is the POST below).
         const res = await fetch(`/api/download/${token}?mode=json`)
         const data = await res.json()
-        if (data.ok) setState({ kind: 'ready', name: data.name ?? null })
+        if (data.ok) setState({ kind: 'ready', name: data.name ?? null, invoiceUrl: data.invoiceUrl ?? null })
         else setState({ kind: 'error', message: data.error || 'This download link is not valid' })
       } catch {
         setState({ kind: 'error', message: 'Could not reach the server. Check your connection and retry.' })
@@ -62,6 +65,39 @@ export default function DownloadView() {
       setClaiming(false)
     }
   }, [token, claiming])
+
+  /**
+   * The buyer's own invoice PDF — same token authorises it (proof of
+   * purchase), available on any device the emailed link opens on.
+   */
+  const downloadInvoice = useCallback(async (invoiceUrl: string) => {
+    if (invoiceBusy) return
+    setInvoiceBusy(true)
+    setInvoiceError(null)
+    try {
+      const res = await fetch(invoiceUrl)
+      if (!res.ok) {
+        const data = (await res.json().catch(() => null)) as { error?: string } | null
+        throw new Error(data?.error ?? 'Invoice could not be downloaded')
+      }
+      const disposition = res.headers.get('content-disposition') ?? ''
+      const match = /filename="([^"]+)"/.exec(disposition)
+      const blob = await res.blob()
+      const url = URL.createObjectURL(blob)
+      const anchor = document.createElement('a')
+      anchor.href = url
+      anchor.download = match?.[1] ?? 'invoice.pdf'
+      document.body.appendChild(anchor)
+      anchor.click()
+      anchor.remove()
+      URL.revokeObjectURL(url)
+      setInvoiceDone(true)
+    } catch (err) {
+      setInvoiceError(err instanceof Error ? err.message : 'Invoice could not be downloaded')
+    } finally {
+      setInvoiceBusy(false)
+    }
+  }, [invoiceBusy])
 
   return (
     <div className="relative z-10 flex min-h-[80dvh] items-center justify-center px-4 py-16">
@@ -109,6 +145,31 @@ export default function DownloadView() {
                 </>
               )}
             </Button>
+            {state.invoiceUrl && (
+              <>
+                <Button
+                  variant="outline"
+                  onClick={() => void downloadInvoice(state.invoiceUrl as string)}
+                  disabled={invoiceBusy}
+                  className="mt-3 h-11 w-full rounded-full border-[#e5b842]/40 text-sm font-semibold text-[#fae8a7] hover:bg-[#e5b842]/10"
+                >
+                  {invoiceBusy ? (
+                    <>
+                      <Loader2 className="mr-2 h-4 w-4 animate-spin" aria-hidden="true" /> Preparing invoice…
+                    </>
+                  ) : (
+                    <>
+                      <FileText className="mr-2 h-4 w-4" aria-hidden="true" /> {invoiceDone ? 'Invoice downloaded' : 'Download invoice (PDF)'}
+                    </>
+                  )}
+                </Button>
+                {invoiceError && (
+                  <p className="mt-2 text-xs text-amber-400" role="alert">
+                    {invoiceError}
+                  </p>
+                )}
+              </>
+            )}
             <div className="mt-5 space-y-1.5 text-xs text-[#9aa89e]">
               <p className="flex items-center justify-center gap-1.5">
                 <Clock className="h-3.5 w-3.5" /> Link valid 48 hours · 5 downloads max

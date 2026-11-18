@@ -6,6 +6,7 @@ import { productRepo, ProductRow } from '@/repositories/product-repo'
 import { cleanPastedVideoUrl, parseVideoSource, type VideoSource } from '@/lib/video-source'
 import { isR2Ref, parseR2Ref } from '@/lib/r2'
 import { isImagekitRef, parseImagekitRef } from '@/lib/storage'
+import { computeMediaRefs } from '@/services/storage-refs'
 import type { ProductInput, ProductListQuery } from '@/validators/product'
 import type { NextRequest } from 'next/server'
 
@@ -234,7 +235,7 @@ export async function createProduct(input: ProductInput) {
   const slug = input.slug?.trim() ? input.slug : slugify(input.title)
   if (await productRepo.slugExists(slug)) throw conflict(`Slug "${slug}" already in use`)
 
-  const product = await productRepo.create({
+  const payload = {
     title: input.title,
     slug,
     zone: input.zone,
@@ -269,7 +270,13 @@ export async function createProduct(input: ProductInput) {
     fileFormats: asJsonString(input.fileFormats, []),
     pageCount: input.pageCount ?? null,
     spatialCoords: asJsonString(input.spatialCoords, { x: 0, y: 0, z: 0 }),
-  })
+  }
+  // ── Storage cleanup (additive): register managed files at creation ──
+  const createData = {
+    ...payload,
+    mediaRefs: computeMediaRefs('{}', input.mediaFileIds, payload),
+  }
+  const product = await productRepo.create(createData)
   return toProductDTO(product)
 }
 

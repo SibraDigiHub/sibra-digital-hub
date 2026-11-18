@@ -17,12 +17,14 @@ import type { MouseEvent as ReactMouseEvent } from 'react'
 import confetti from 'canvas-confetti'
 import { useAppStore } from '@/store/app-store'
 import type { Product } from '@/types/marketplace'
-import { formatMoney } from '@/types/marketplace'
 import { platformMeta } from '@/lib/platforms'
+import { useVisitorCurrency, visitorPriceLabel, type VisitorCurrency } from '@/lib/visitor-currency'
+import { VisitorPrice } from '@/components/shop/VisitorPrice'
 import { playFx } from '@/lib/sound-fx'
 import { useToast } from '@/hooks/use-toast'
 import { cn } from '@/lib/utils'
 import { track } from '@/lib/track'
+import { clientTimezoneHeaders } from '@/lib/visitor-currency'
 import { InstantDownloadDialog } from '@/components/checkout/InstantDownloadDialog'
 
 // ── Geo cache: one /api/geo fetch per browser session ──────
@@ -38,10 +40,19 @@ export function getGeo(): Promise<boolean> {
     return Promise.resolve(stored)
   }
   if (!geoInflight) {
-    geoInflight = fetch('/api/geo')
-      .then((r) => (r.ok ? r.json() : { isIndia: true }))
+    geoInflight = fetch('/api/geo', { cache: 'no-store', headers: clientTimezoneHeaders() })
+      .then((r) => (r.ok ? r.json() : {}))
       .then((d: { isIndia?: boolean }) => {
-        geoCache = d.isIndia ?? true
+        // Task 3: the backend now honours our x-client-timezone header, so a
+        // healthy response already carries the timezone-derived answer. This
+        // fallback only covers a degenerate response: keep the device-timezone
+        // answer instead of a blind server guess (India-first audience).
+        if (typeof d.isIndia === 'boolean') {
+          geoCache = d.isIndia
+        } else {
+          const tz = clientTimezoneHeaders()['x-client-timezone'] ?? ''
+          geoCache = /^asia\/(calcutta|kolkata)$/i.test(tz) || !tz ? true : false
+        }
         useAppStore.getState().setIsIndia(geoCache)
         return geoCache
       })
@@ -88,6 +99,15 @@ export function CheckoutButtons({
   const [isIndia, setIsIndia] = useState<boolean | null>(null)
   const [pending, setPending] = useState<string | null>(null)
   const [dialogOpen, setDialogOpen] = useState(false)
+  // Task 3 — one visitor price, server decides the charge. The rails and
+  // labels below are currency-aware; unknown renders price-free (neutral).
+  const currency = useVisitorCurrency()
+  const priceLabel = visitorPriceLabel(currency, product.priceUsd, product.priceInr)
+  // Never show a direct-buy price for a region whose price is missing —
+  // the instant dialog would just answer the marketplace-hint error.
+  const regionPriceMissing =
+    (currency === 'INR' && !(product.priceInr > 0)) || (currency === 'USD' && !(product.priceUsd > 0))
+  const instantAvailable = product.instantDownload && !regionPriceMissing
 
   useEffect(() => {
     let live = true
@@ -99,7 +119,6 @@ export function CheckoutButtons({
     }
   }, [])
 
-  const money = formatMoney(product.priceUsd, product.priceInr)
   const indiaPrimary = isIndia !== false // India-first while geo is unknown
 
   /** Confetti burst at the click point, then open link / demo toast */
@@ -164,7 +183,7 @@ export function CheckoutButtons({
     const platformFallback = product.platformLinks[0]
     return (
       <div className="w-full">
-        {product.instantDownload ? (
+        {instantAvailable ? (
           <button
             type="button"
             onClick={() => {
@@ -172,7 +191,7 @@ export function CheckoutButtons({
               track('buy_click', { productId: product.id, zone: product.zone, platform: 'instant' })
               setDialogOpen(true)
             }}
-            aria-label={`Instant Download for ${money.inr} — ${product.title}`}
+            aria-label={`Instant Download${priceLabel ? ` for ${priceLabel}` : ''} — ${product.title}`}
             className={cn(
               btnBase,
               'min-h-[48px] flex-row justify-center gap-2 bg-gradient-to-r from-emerald-500 via-emerald-400 to-amber-400 text-base text-white shadow-[0_10px_30px_rgba(16,185,129,0.4)]',
@@ -180,11 +199,11 @@ export function CheckoutButtons({
           >
             <span className="relative z-10 truncate">⚡ Instant Download</span>
           </button>
-        ) : product.indiaLink ? (
+        ) : product.indiaLink && (currency === null || currency === 'INR') ? (
           <button
             type="button"
             disabled={pending === 'india'}
-            aria-label={`Instant Indian Checkout via UPI for ${money.inr} — ${product.title}`}
+            aria-label={`Instant Indian Checkout via UPI${currency === 'INR' && priceLabel ? ` for ${priceLabel}` : ''} — ${product.title}`}
             onClick={(e) =>
               openExternal(e, product.indiaLink as string, ['#FF9933', '#FFFFFF', '#138808', '#00F0FF'], 'india')
             }
@@ -198,11 +217,11 @@ export function CheckoutButtons({
           >
             <span className="relative z-10 truncate">🇮🇳 Instant Checkout (UPI)</span>
           </button>
-        ) : product.internationalLink ? (
+        ) : product.internationalLink && (currency === null || currency === 'USD') ? (
           <button
             type="button"
             disabled={pending === 'intl'}
-            aria-label={`Global purchase in USD for ${money.usd} — ${product.title}`}
+            aria-label={`Global purchase in USD${currency === 'USD' && priceLabel ? ` for ${priceLabel}` : ''} — ${product.title}`}
             onClick={(e) =>
               openExternal(e, product.internationalLink as string, ['#E5B842', '#00F0FF', '#FAE8A7'], 'intl')
             }
@@ -240,7 +259,7 @@ export function CheckoutButtons({
           </button>
         ) : null}
 
-        {product.instantDownload && (
+        {product.instantDownload && currency !== null && !regionPriceMissing && (
           <InstantDownloadDialog product={product} open={dialogOpen} onOpenChange={setDialogOpen} />
         )}
       </div>
@@ -249,9 +268,9 @@ export function CheckoutButtons({
 
   return (
     <div className={cn('w-full', compact ? 'flex flex-col gap-2' : 'flex flex-col gap-3')}>
-      {(product.instantDownload || product.indiaLink || product.internationalLink) && (
+      {(instantAvailable || (product.indiaLink && (currency === null || currency === 'INR')) || (product.internationalLink && (currency === null || currency === 'USD'))) && (
         <div className={cn('flex gap-3', compact ? 'flex-col' : 'flex-col md:flex-row md:items-stretch')}>
-          {product.instantDownload && (
+          {instantAvailable && (
             <button
               type="button"
               onClick={() => {
@@ -259,7 +278,7 @@ export function CheckoutButtons({
                 track('buy_click', { productId: product.id, zone: product.zone, platform: 'instant' })
                 setDialogOpen(true)
               }}
-              aria-label={`Instant Download for ${money.inr} — ${product.title}`}
+              aria-label={`Instant Download${priceLabel ? ` for ${priceLabel}` : ''} — ${product.title}`}
               className={cn(
                 btnBase,
                 mainSize,
@@ -272,19 +291,25 @@ export function CheckoutButtons({
                 style={{ animationDuration: '2.6s' }}
               />
               <span className="relative z-10 flex w-full flex-col items-center justify-center leading-tight">
-                <span className={labelSize}>⚡ Instant Download · {money.inr}</span>
+                <span className={labelSize}>
+                  ⚡ Instant Download ·{' '}
+                  <VisitorPrice
+                    usd={product.priceUsd}
+                    inr={product.priceInr}
+                  />
+                </span>
                 <span className={cn('font-medium text-white/85', subSize)}>
-                  GPay · PhonePe · Paytm · BHIM — emailed in seconds
+                  GPay · PhonePe · Paytm · cards — emailed in seconds
                 </span>
               </span>
             </button>
           )}
 
-          {product.indiaLink && (
+          {product.indiaLink && (currency === null || currency === 'INR') && (
             <button
               type="button"
               disabled={pending === 'india'}
-              aria-label={`Instant Indian Checkout via UPI for ${money.inr} — ${product.title}`}
+              aria-label={`Instant Indian Checkout via UPI${currency === 'INR' && priceLabel ? ` for ${priceLabel}` : ''} — ${product.title}`}
               onClick={(e) =>
                 openExternal(e, product.indiaLink as string, ['#FF9933', '#FFFFFF', '#138808', '#00F0FF'], 'india')
               }
@@ -297,17 +322,19 @@ export function CheckoutButtons({
               )}
             >
               <span className="flex w-full flex-col items-center justify-center leading-tight">
-                <span className={labelSize}>🇮🇳 Instant Checkout (UPI) · {money.inr}</span>
+                <span className={labelSize}>
+                  🇮🇳 Instant Checkout (UPI){currency === 'INR' ? <> · ₹{Math.round(product.priceInr)}</> : null}
+                </span>
                 <span className={cn('font-medium opacity-80', subSize)}>GPay · PhonePe · Paytm · BHIM</span>
               </span>
             </button>
           )}
 
-          {product.internationalLink && (
+          {product.internationalLink && (currency === null || currency === 'USD') && (
             <button
               type="button"
               disabled={pending === 'intl'}
-              aria-label={`Global purchase in USD for ${money.usd} — ${product.title}`}
+              aria-label={`Global purchase in USD${currency === 'USD' && priceLabel ? ` for ${priceLabel}` : ''} — ${product.title}`}
               onClick={(e) =>
                 openExternal(e, product.internationalLink as string, ['#E5B842', '#00F0FF', '#FAE8A7'], 'intl')
               }
@@ -320,7 +347,9 @@ export function CheckoutButtons({
               )}
             >
               <span className="flex w-full flex-col items-center justify-center leading-tight">
-                <span className={labelSize}>🌍 Global Purchase (USD) · {money.usd}</span>
+                <span className={labelSize}>
+                  🌍 Global Purchase (USD){currency === 'USD' ? <> · ${product.priceUsd.toFixed(2)}</> : null}
+                </span>
                 <span className={cn('font-medium opacity-80', subSize)}>Secure external checkout</span>
               </span>
             </button>
@@ -337,7 +366,7 @@ export function CheckoutButtons({
                 key={`${link.platform}-${link.url}-${i}`}
                 type="button"
                 disabled={pending === `pl-${link.platform}`}
-                aria-label={`${meta.label} — ${money.usd} / ${money.inr}, opens in a new tab`}
+                aria-label={`${meta.label}${priceLabel ? ` — ${priceLabel}` : ''}, opens in a new tab`}
                 onClick={(e) =>
                   openExternal(e, link.url, ['#E5B842', '#00F0FF', '#FAE8A7'], `pl-${link.platform}`, {
                     particles: 26,
@@ -362,7 +391,7 @@ export function CheckoutButtons({
         </div>
       )}
 
-      {product.instantDownload && (
+      {product.instantDownload && currency !== null && !regionPriceMissing && (
         <InstantDownloadDialog product={product} open={dialogOpen} onOpenChange={setDialogOpen} />
       )}
     </div>
