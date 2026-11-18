@@ -112,16 +112,34 @@ export default function AdminOrders() {
     setBusyId(o.id)
     try {
       const res = await adminFetch(`/api/orders/${o.id}/resend`, { method: 'POST' })
-      const data = (await res.json().catch(() => null)) as { emailDemo?: boolean; error?: string } | null
+      const data = (await res.json().catch(() => null)) as { emailDemo?: boolean; limitReset?: boolean; error?: string } | null
       if (!res.ok) throw new Error(data?.error ?? 'Resend failed')
       toast({
-        title: data?.emailDemo ? 'Demo mode: email not configured' : 'Delivery email re-sent',
-        description: data?.emailDemo ? undefined : `To ${o.customerEmail}`,
+        title: data?.emailDemo
+          ? 'Demo mode: email not configured'
+          : data?.limitReset
+            ? 'Fresh link sent — download quota reset'
+            : 'Delivery email re-sent',
+        description: data?.emailDemo
+          ? undefined
+          : data?.limitReset
+            ? `${o.customerEmail} had reached the download limit — the email says a fresh link with a new quota is enclosed.`
+            : `To ${o.customerEmail}`,
       })
     } catch (err) {
       toast({ title: err instanceof Error ? err.message : 'Resend failed', variant: 'destructive' })
     } finally {
       setBusyId(null)
+    }
+  }
+
+  /** Support flow: one click copies the order id the customer can quote. */
+  async function copyOrderId(id: string) {
+    try {
+      await navigator.clipboard.writeText(id)
+      toast({ title: 'Order ID copied', description: id })
+    } catch {
+      toast({ title: 'Could not copy — long-press/select it manually', variant: 'destructive' })
     }
   }
 
@@ -242,7 +260,7 @@ export default function AdminOrders() {
 
   function exportCsv() {
     try {
-      const header = ['date', 'customer', 'email', 'product', 'amountInr', 'status', 'downloads', 'emailSent']
+      const header = ['orderId', 'date', 'customer', 'email', 'product', 'amountInr', 'status', 'downloads', 'emailSent']
       const esc = (v: unknown) => {
         const s = String(v ?? '')
         return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s
@@ -250,7 +268,7 @@ export default function AdminOrders() {
       const lines = [header.join(',')]
       for (const o of orders) {
         lines.push(
-          [o.createdAt, o.customerName, o.customerEmail, o.product?.title ?? '', o.amountInr, o.status, o.downloadCount, o.emailSent]
+          [o.id, o.createdAt, o.customerName, o.customerEmail, o.product?.title ?? '', o.amountInr, o.status, o.downloadCount, o.emailSent]
             .map(esc)
             .join(','),
         )
@@ -301,7 +319,7 @@ export default function AdminOrders() {
             setQ(e.target.value)
             setPage(1)
           }}
-          placeholder="Search by customer name or email…"
+          placeholder="Search by customer name, email or order ID…"
           aria-label="Search orders"
           className="h-10 pl-9"
         />
@@ -324,9 +342,10 @@ export default function AdminOrders() {
           </div>
         ) : (
           <>
-            <Table className="min-w-[1160px]">
+            <Table className="min-w-[1280px]">
               <TableHeader>
                 <TableRow className="border-white/10 hover:bg-transparent">
+                  <TableHead className="text-[#9AA89E]">Order ID</TableHead>
                   <TableHead className="text-[#9AA89E]">Date</TableHead>
                   <TableHead className="text-[#9AA89E]">Customer</TableHead>
                   <TableHead className="text-[#9AA89E]">Product</TableHead>
@@ -342,6 +361,17 @@ export default function AdminOrders() {
               <TableBody>
                 {pagedOrders.map((o) => (
                   <TableRow key={o.id} className="border-white/10">
+                    <TableCell className="max-w-[128px]">
+                      <button
+                        type="button"
+                        className="w-full cursor-copy truncate text-left font-mono text-[11px] text-[#9AA89E] transition-colors hover:text-[#E5B842]"
+                        title={`Copy order ID: ${o.id}`}
+                        onClick={() => void copyOrderId(o.id)}
+                        aria-label={`Copy order ID ${o.id}`}
+                      >
+                        {o.id}
+                      </button>
+                    </TableCell>
                     <TableCell className="whitespace-nowrap text-xs text-[#9AA89E]">{fmtDate(o.createdAt)}</TableCell>
                     <TableCell>
                       <p className="text-sm font-medium">{o.customerName}</p>

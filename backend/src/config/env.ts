@@ -72,6 +72,12 @@ const schema = z.object({
   DOWNLOAD_TTL_HOURS: z.coerce.number().int().min(1).max(24 * 30).default(48),
   /** T5: per-order download cap enforced atomically in the claim. Default 5. */
   DOWNLOAD_MAX_DEFAULT: z.coerce.number().int().min(1).max(100).default(5),
+  /**
+   * Seller GSTIN printed on the invoice PDF. Optional: the GSTIN line is
+   * drawn ONLY when this (or the invoiceGstin SiteSetting) is set — unset
+   * means the line is omitted entirely, never a "Not applicable" placeholder.
+   */
+  INVOICE_GSTIN: z.string().optional(),
   RESEND_API_KEY: z.string().optional(),
   EMAIL_FROM: z.string().optional(),
   /** T6: email driver — 'resend' | 'console'. Default: resend iff RESEND_API_KEY is set. */
@@ -490,6 +496,15 @@ export function razorpayForeignCurrencies(): string[] {
 
 /** Per-order download cap (env-configurable, default 5). */
 export const downloadMaxDefault = (): number => env.DOWNLOAD_MAX_DEFAULT
+
+/**
+ * Seller GSTIN for invoice PDFs — returns the trimmed INVOICE_GSTIN env value
+ * or null. Null ⇒ the invoice renderer omits the GSTIN line completely.
+ */
+export function invoiceGstin(): string | null {
+  const raw = env.INVOICE_GSTIN?.trim()
+  return raw ? raw : null
+}
 
 /**
  * Effective auth-secret status for the admin "system health" panel.

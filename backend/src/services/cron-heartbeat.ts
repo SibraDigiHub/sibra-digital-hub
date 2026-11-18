@@ -15,6 +15,7 @@ import { sendPaymentAlert } from '@/lib/admin-alerts'
 
 export const RECONCILE_HEARTBEAT_KEY = 'reconcile-payments'
 export const RETRY_EMAILS_HEARTBEAT_KEY = 'retry-emails'
+export const STORAGE_CLEANUP_HEARTBEAT_KEY = 'storage-cleanup'
 
 /** Admin → System warning threshold for a silent cron. */
 export const HEARTBEAT_WARN_MS = 30 * 60 * 1000

@@ -226,7 +226,7 @@ export default function HowItWorksBento() {
           </span>
         </div>
         <p className="shop-sub max-w-xl text-sm leading-relaxed text-muted-foreground">
-          One secure checkout routed by your billing country — India: UPI,
+          One secure checkout routed by your detected region — India: UPI,
           cards and net banking via Razorpay. Outside India? Razorpay Checkout
           where your region is enabled, otherwise the marketplace buttons on
           each product have you covered.

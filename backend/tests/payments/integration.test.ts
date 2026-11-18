@@ -25,6 +25,10 @@ async function api(path: string, init: RequestInit = {}): Promise<{ status: numb
     headers: {
       'content-type': 'application/json',
       'x-internal-key': INTERNAL_KEY,
+      // Task 3: the SERVER decides the country from the platform geo header.
+      // Default IN for the INR-order tests; individual probes override it
+      // (e.g. the US-quote/server-authority tests below).
+      'x-vercel-ip-country': 'IN',
       // Cron routes require `Authorization: Bearer $CRON_SECRET` whenever the
       // server has one configured. The suite reads the same env (bun autoloads
       // backend/.env) and authenticates exactly like production callers — an
@@ -315,10 +319,25 @@ describe('checkout HTTP contract', () => {
     expect(inn.body.currency).toBe('INR')
     expect(typeof inn.body.amountMinor).toBe('number')
 
-    const us = await api('/api/checkout/quote', { method: 'POST', body: JSON.stringify({ productId: testProduct.id, country: 'US' }) })
+    // Task 3: the body country is IGNORED — the header decides. The body
+    // still says IN while the header says US: the quote MUST be USD.
+    const us = await api('/api/checkout/quote', {
+      method: 'POST',
+      headers: { 'x-vercel-ip-country': 'US' },
+      body: JSON.stringify({ productId: testProduct.id, country: 'IN' }),
+    })
     expect(us.status).toBe(200)
     expect(us.body.gateway).toBe('razorpay')
     expect(us.body.currency).toBe('USD')
+
+    // And the mirror image: a client-spoofed US body under an IN header
+    // gets the INR price — the client can never pick the currency.
+    const spoofed = await api('/api/checkout/quote', {
+      method: 'POST',
+      body: JSON.stringify({ productId: testProduct.id, country: 'US' }),
+    })
+    expect(spoofed.status).toBe(200)
+    expect(spoofed.body.currency).toBe('INR')
 
     const bad = await api('/api/checkout/quote', { method: 'POST', body: JSON.stringify({ productId: 'nope', country: 'US' }) })
     expect(bad.status).toBe(404)
@@ -580,8 +599,8 @@ describe('checkout concurrency (re-audit B4)', () => {
     // The loser of the gateway-session claim polls (600 ms ticks) for the
     // winner's ref — give the test more headroom than bun's 5 s default.
     const [a, b] = await Promise.all([
-      createCheckout(input, { ipCountry: null, visitorCookie: null }),
-      createCheckout(input, { ipCountry: null, visitorCookie: null }),
+      createCheckout(input, { serverCountry: "IN", ipCountry: null, visitorCookie: null }),
+      createCheckout(input, { serverCountry: "IN", ipCountry: null, visitorCookie: null }),
     ])
     // Open-order reuse is serialized — both responses are the SAME order.
     expect(a.order.id).toBe(b.order.id)
@@ -622,7 +641,7 @@ describe('checkout concurrency (re-audit B4)', () => {
       consent: true as const,
     }
     const results = await Promise.allSettled(
-      Array.from({ length: 6 }, () => createCheckout(input, { ipCountry: null, visitorCookie: null })),
+      Array.from({ length: 6 }, () => createCheckout(input, { serverCountry: "IN", ipCountry: null, visitorCookie: null })),
     )
     for (const r of results) {
       expect(r.status).toBe('rejected')

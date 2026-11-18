@@ -20,7 +20,7 @@ export const ABOUT_PAGE: LegalPageData = {
       blocks: [
         {
           kind: 'p',
-          text: '{{businessName}} is an independent, two-zone digital storefront — a Kids Zone curated for families and a Creator Hub built for designers, developers and job-seekers. Every product is an instant digital download.',
+          text: '{{businessName}} is an independent, two-zone digital storefront — a Kids Zone curated for families and a Creator Hub built for designers, developers and job-seekers. Every product is a digital download.',
         },
         {
           kind: 'list',
@@ -42,7 +42,7 @@ export const ABOUT_PAGE: LegalPageData = {
       blocks: [
         {
           kind: 'p',
-          text: 'Two zones, one idea — premium digital files you can download and use the same minute you pay:',
+          text: 'Two zones, one idea — premium digital files delivered as digital downloads once your payment is confirmed:',
         },
         {
           kind: 'list',
@@ -53,7 +53,7 @@ export const ABOUT_PAGE: LegalPageData = {
         },
         {
           kind: 'p',
-          text: 'Everything is digital. Nothing is shipped, so there is no delivery address to wait for — your file link arrives by e-mail right after payment.',
+          text: 'Everything is digital. Nothing is shipped, so there is no delivery address to wait for — your download link is e-mailed after your payment is confirmed.',
         },
       ],
     },
@@ -67,8 +67,8 @@ export const ABOUT_PAGE: LegalPageData = {
             '1. Pick a product — the page shows the full price in ₹ and $ before you click',
             '2. Pay securely — Razorpay Checkout handles Indian payments (UPI, cards, net banking) and international payments in USD',
             '3. Payment verified — the moment your payment is confirmed, delivery starts automatically',
-            '4. Instant delivery — a secure download link is e-mailed to you (usually within seconds) and also shown on the thank-you page',
-            '5. The link works for 48 hours with up to 5 downloads — and we renew expired links free for genuine buyers',
+            '4. Delivery — once your payment is confirmed, a secure download link is e-mailed to you and also shown on the thank-you page when available',
+            '5. By default the link works for 48 hours with up to 5 downloads — and support can help genuine buyers with replacement links after verification',
           ],
         },
         {
@@ -101,10 +101,10 @@ export const ABOUT_PAGE: LegalPageData = {
         {
           kind: 'list',
           items: [
-            'Instant, verifiable delivery for every direct purchase',
+            'Automatic digital delivery by e-mail for every direct purchase after payment confirmation',
             'Honest support — write to {{email}} and a human replies',
             'Data minimalism — we collect only what a delivery needs (see the Privacy Policy)',
-            'Fair refunds — unused orders are refunded; wrong, corrupt, duplicate or undelivered files are fixed or refunded within 7 days',
+            'Fair refunds — every request is assessed individually and fairly (see the Refund & Delivery Policy)',
           ],
         },
       ],

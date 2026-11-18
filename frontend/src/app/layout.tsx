@@ -155,6 +155,37 @@ export default function RootLayout({
       <body
         className={`${cinzel.variable} ${playfair.variable} ${jakarta.variable} ${jetbrains.variable} ${baloo.variable} antialiased`}
       >
+        {/* Task 3 — pre-paint visitor-currency resolution (cache-safe):
+            the server HTML always renders BOTH the USD and INR price twins;
+            CSS decides which is visible via <html data-currency>. This
+            inline script runs with the first body bytes (before any price
+            markup paints) so the correct single price shows immediately —
+            no flash, no CLS, zero extra requests.
+
+            Resolution order (all synchronous, no network):
+              1. Device timezone — Asia/Calcutta|Asia/Kolkata ⇒ INR. The
+                 STRONGEST client signal: the OS clock follows where the
+                 user actually lives, regardless of browser language or
+                 VPN, and is checked BEFORE the cookie so a stale
+                 sdh_geo=US cookie can never pin an Indian device to $.
+              2. sdh_geo cookie (returning visitor — set by /api/geo).
+              3. navigator.languages — any Indian region tag (`*-IN`) or
+                 Indian primary language (hi, bn, ta, te, mr, gu, kn, ml,
+                 pa, or, as, ur) ⇒ INR (first-visit fallback).
+              4. USD (the international / crawler / unknown default).
+
+            The /api/geo endpoint is still called once (React effect, see
+            lib/visitor-currency) with an x-client-timezone header, to
+            persist the cookie and refine via the platform's IP geo header
+            when the device clock is ambiguous. The SERVER always decides
+            what is CHARGED (checkout reads the geo header, then this same
+            timezone hint); this script only picks what is DISPLAYED. */}
+        <script
+          dangerouslySetInnerHTML={{
+            __html:
+              "(function(){window.__sdhBoot=(window.__sdhBoot||0)+1;document.documentElement.dataset.sdhBoot='1';try{var c='';var tz='';try{tz=(Intl.DateTimeFormat().resolvedOptions()||{}).timeZone||''}catch(e){}if(tz==='Asia/Calcutta'||tz==='Asia/Kolkata')c='IN';if(!c){var m=document.cookie.match(/(?:^|; )sdh_geo=([A-Z]{2})/);c=m?m[1]:''}if(!c){var ls=navigator.languages||[navigator.language||''];var il=/^(hi|bn|ta|te|mr|gu|kn|ml|pa|or|as|ur|sa)$/;for(var i=0;i<ls.length;i++){var p=(ls[i]||'').toLowerCase().split('-');if(p[1]==='in'||il.test(p[0])){c='IN';break}}}document.documentElement.dataset.currency=c==='IN'?'INR':'USD'}catch(e){document.documentElement.dataset.currency='USD'}})()",
+          }}
+        />
         {/* Legacy /#/… links → real URLs (once per page load; hash views
             without a real route are untouched). Renders nothing. */}
         <HashRedirect />

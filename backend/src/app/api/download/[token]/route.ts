@@ -204,7 +204,15 @@ export const GET = asHandler(async (req: NextRequest, { params }: { params: Prom
   if (!result.ok) return failResponse(req, token, result)
   if (req.nextUrl.searchParams.get('mode') === 'json') {
     // The SPA download page validates for free, then claims via POST.
-    return NextResponse.json({ ok: true, name: result.order.product.deliverableName, claimable: true })
+    // invoiceUrl lets the same page offer the buyer's PDF invoice on any
+    // device — authorised by THIS token (see /api/download/[token]/invoice);
+    // the token never leaves the page that already holds it.
+    return NextResponse.json({
+      ok: true,
+      name: result.order.product.deliverableName,
+      claimable: true,
+      invoiceUrl: `/api/download/${encodeURIComponent(token)}/invoice`,
+    })
   }
   // Email links / bookmarks point here — send humans to the claim page.
   return pageRedirect(req, `/#/download/${token}`)

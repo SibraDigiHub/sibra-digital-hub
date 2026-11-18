@@ -4,10 +4,15 @@
 // InstantDownloadDialog — ⚡ instant-delivery checkout (single
 // gateway §5.2). 3-step state machine: form → pay → success.
 //
-//   India (server-decided)  → Razorpay Standard Checkout (INR);
+//   India (server-detected) → Razorpay Standard Checkout (INR);
 //                             UPI demo QR in the key-less demo env.
 //   Everywhere else         → Razorpay Standard Checkout in the
 //                             configured foreign currency (flag on).
+//
+// Task 3: NO country selector — the SERVER detects the country from
+// the connection (platform geo header) and decides gateway/currency/
+// amount. The dialog only echoes the server's quote; the client-sent
+// `country` field is gone entirely.
 //
 // The gateway/currency/amount are ALWAYS the server's quote —
 // the dialog only echoes them. Success is shown ONLY after the
@@ -25,10 +30,10 @@ import { platformMeta } from '@/lib/platforms'
 import { playFx } from '@/lib/sound-fx'
 import { useToast } from '@/hooks/use-toast'
 import { cn } from '@/lib/utils'
-import { COUNTRIES, countryName } from '@/lib/countries'
+import { resolveVisitorCurrency } from '@/lib/visitor-currency'
+import { useAppStore } from '@/store/app-store'
 import {
   createCheckout,
-  fetchGeoCountry,
   fetchQuote,
   loadRazorpayCheckout,
   type Quote,
@@ -67,6 +72,18 @@ function quoteLine(quote: Quote): string {
   return (QUOTE_HINTS[quote.gateway] ?? 'Pay {amount}.').replace('{amount}', quote.display)
 }
 
+/**
+ * The verify API returns the raw claim endpoint (/api/download/<token>) —
+ * the buyer-facing one-click claim page is the SPA route #/download/<token>
+ * (same page the demo flow and the delivery email open).
+ */
+function downloadPageUrl(apiUrl: string): string {
+  const marker = '/api/download/'
+  const idx = apiUrl.indexOf(marker)
+  const token = idx >= 0 ? apiUrl.slice(idx + marker.length) : ''
+  return token ? `/#/download/${token}` : apiUrl
+}
+
 export function InstantDownloadDialog({
   product,
   open,
@@ -81,8 +98,7 @@ export function InstantDownloadDialog({
   const [step, setStep] = useState<Step>('form')
   const [name, setName] = useState('')
   const [email, setEmail] = useState('')
-  const [country, setCountry] = useState('')
-  const [errors, setErrors] = useState<{ name?: string; email?: string; country?: string }>({})
+  const [errors, setErrors] = useState<{ name?: string; email?: string }>({})
   const [submitting, setSubmitting] = useState(false)
 
   // §8: the quote (gateway + exact total) — server-authoritative.
@@ -120,6 +136,9 @@ export function InstantDownloadDialog({
   const [paymentBlocked, setPaymentBlocked] = useState(false)
 
   const pollTimer = useRef<ReturnType<typeof setInterval> | null>(null)
+  // Payment-success redirect to the thank-you page — a dedicated handle so
+  // the razorpay-step cleanup (timersRef) can never cancel it.
+  const redirectTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const idempotencyKey = useRef<string>('')
   // One-shot setTimeout handles inside the checkout step (e.g. the gateway
   // pointer-events unlock) — cleared on unmount so nothing fires post-close.
@@ -135,25 +154,39 @@ export function InstantDownloadDialog({
     setStep('success')
     playFx('sparkle')
     confetti({ particleCount: 130, spread: 90, origin: { x: 0.5, y: 0.45 }, disableForReducedMotion: true })
-  }, [])
+    // Owner request: payment complete ⇒ the thank-you page OPENS — it is the
+    // single place carrying the product download + invoice. The success step
+    // stays up only for the celebration beat, then the SPA navigates there.
+    // Belt-and-braces: also stash the order reference — ThankYouView falls
+    // back to it when a site's router drops the ?order= query (older store
+    // builds navigate with a bare #/thank-you). Fresh on every payment.
+    try {
+      if (orderId) window.sessionStorage.setItem('sdh_thankyou_order', orderId)
+      else window.sessionStorage.removeItem('sdh_thankyou_order')
+    } catch {
+      /* private mode — the URL param is the primary carrier anyway */
+    }
+    if (redirectTimer.current) clearTimeout(redirectTimer.current)
+    redirectTimer.current = setTimeout(() => {
+      redirectTimer.current = null
+      onOpenChange(false)
+      useAppStore.getState().navigate('thankyou', orderId ? { orderId } : undefined)
+    }, 1200)
+  }, [orderId, onOpenChange])
 
-  // ── Quote follows the confirmed country (§8) — fetched from the
-  // change handler / geo pre-select, never from a render-phase effect.
-  const loadQuote = useCallback(
-    (countryCode: string) => {
-      if (!countryCode) return
-      setQuoteLoading(true)
-      setQuoteError(null)
-      fetchQuote(product.id, countryCode)
-        .then((r) => {
-          if (r.ok) setQuote(r.quote)
-          else setQuoteError(r.error)
-        })
-        .catch(() => setQuoteError('Could not fetch the price right now — please try again.'))
-        .finally(() => setQuoteLoading(false))
-    },
-    [product.id],
-  )
+  // ── Quote: the SERVER decides everything (§8, Task 3) — fetched once
+  // per dialog-open, no client country involved.
+  const loadQuote = useCallback(() => {
+    setQuoteLoading(true)
+    setQuoteError(null)
+    fetchQuote(product.id)
+      .then((r) => {
+        if (r.ok) setQuote(r.quote)
+        else setQuoteError(r.error)
+      })
+      .catch(() => setQuoteError('Could not fetch the price right now — please try again.'))
+      .finally(() => setQuoteLoading(false))
+  }, [product.id])
 
   // ── Reset the machine shortly after the dialog closes ────
   useEffect(() => {
@@ -161,19 +194,16 @@ export function InstantDownloadDialog({
       // §8: one Idempotency-Key per dialog-open (retries reuse it).
       idempotencyKey.current =
         typeof crypto !== 'undefined' && 'randomUUID' in crypto ? crypto.randomUUID() : `sdh-${Date.now()}-${Math.random().toString(36).slice(2)}`
-      // Geo-IP only PRE-SELECTS the default — the customer confirms it (§2.2).
-      void fetchGeoCountry().then((hint) => {
-        if (!hint || country) return
-        setCountry(hint)
-        loadQuote(hint)
-      })
+      // Task 3: no pre-selection needed — the server detects the country.
+      // Prime the sdh_geo cookie (pre-paint currency for next visit), then
+      // fetch the server quote.
+      void resolveVisitorCurrency().then(() => loadQuote())
       return
     }
     const t = setTimeout(() => {
       setStep('form')
       setName('')
       setEmail('')
-      setCountry('')
       setErrors({})
       setSubmitting(false)
       setQuote(null)
@@ -211,6 +241,7 @@ export function InstantDownloadDialog({
   useEffect(
     () => () => {
       if (pollTimer.current) clearInterval(pollTimer.current)
+      if (redirectTimer.current) clearTimeout(redirectTimer.current)
     },
     [],
   )
@@ -302,8 +333,11 @@ export function InstantDownloadDialog({
             orderId,
           }),
         })
-        const data = (await res.json().catch(() => ({}))) as { ok?: boolean; order?: { customerEmail?: string; status?: string }; error?: string }
+        const data = (await res.json().catch(() => ({}))) as { ok?: boolean; order?: { customerEmail?: string; status?: string }; downloadUrl?: string | null; error?: string }
         if (res.ok && data.ok) {
+          // Winner mint: carry the buyer's one-click download into the
+          // thank-you page (watch-mode orders keep their watch link only).
+          stashDownloadUrl(product.deliveryMode !== 'watch' && data.downloadUrl ? downloadPageUrl(data.downloadUrl) : '')
           // Verified + fulfilled — the status poll confirms PAID and flips to
           // the success step (single source of truth, no double celebration).
           setPaidEmail(data.order?.customerEmail ?? email.trim())
@@ -418,12 +452,11 @@ export function InstantDownloadDialog({
     }
   }, [step, rzpOptions, orderId, rzpAttempt, verifyPayment])
 
-  // ── Step 1 → create order (server picks the gateway) ─────
+  // ── Step 1 → create order (server picks gateway + currency) ─
   const submitForm = async () => {
-    const nextErrors: { name?: string; email?: string; country?: string } = {}
+    const nextErrors: { name?: string; email?: string } = {}
     if (name.trim().length < 2) nextErrors.name = 'Please enter your name (at least 2 characters).'
     if (!EMAIL_RE.test(email.trim())) nextErrors.email = "That email doesn't look right — please check it."
-    if (!country) nextErrors.country = 'Please confirm your billing country.'
     setErrors(nextErrors)
     if (Object.keys(nextErrors).length > 0) {
       playFx('error')
@@ -437,7 +470,6 @@ export function InstantDownloadDialog({
           productId: product.id,
           customerName: name.trim(),
           customerEmail: email.trim(),
-          country,
           consent: true,
         },
         idempotencyKey.current,
@@ -494,6 +526,7 @@ export function InstantDownloadDialog({
         return
       }
       setDownloadUrl(data.downloadUrl ?? '')
+      stashDownloadUrl(data.downloadUrl ?? '')
       setWatchUrl(data.watchUrl ?? '')
       stashWatchToken(data.watchUrl ?? '')
       stashRateUrl(data.rateUrl ?? '')
@@ -514,6 +547,19 @@ export function InstantDownloadDialog({
       else window.sessionStorage.removeItem('sdh_watch_token')
     } catch {
       /* private mode — thank-you falls back to the email message */
+    }
+  }
+
+  // The buyer's one-click product download (SPA claim page) travels to the
+  // thank-you page the same way the watch/rate invites do. Cleared when a
+  // payment ends without a fresh token (e.g. already-fulfilled by webhook —
+  // the email link remains the download path then).
+  const stashDownloadUrl = (url: string) => {
+    try {
+      if (url) window.sessionStorage.setItem('sdh_download_url', url)
+      else window.sessionStorage.removeItem('sdh_download_url')
+    } catch {
+      /* private mode — thank-you falls back to the email link */
     }
   }
 
@@ -550,12 +596,14 @@ export function InstantDownloadDialog({
               <DialogHeader>
                 <DialogTitle className="flex flex-wrap items-center gap-2 pr-6 text-left">
                   <span className="line-clamp-2">⚡ Instant Download — {product.title}</span>
-                  <span className="rounded-full bg-primary px-2.5 py-0.5 text-sm font-bold text-primary-foreground">
-                    {quote?.display ?? money.inr}
-                  </span>
+                  {quote?.display ? (
+                    <span className="rounded-full bg-primary px-2.5 py-0.5 text-sm font-bold text-primary-foreground">
+                      {quote.display}
+                    </span>
+                  ) : null}
                 </DialogTitle>
                 <DialogDescription className="text-left">
-                  Pay in your local currency, get your file by email in seconds. No account needed.
+                  Price shown for your region — we detect your country from your connection. Get your file by email in seconds. No account needed.
                 </DialogDescription>
               </DialogHeader>
 
@@ -598,37 +646,9 @@ export function InstantDownloadDialog({
                   )}
                 </div>
 
-                <div className="space-y-1.5">
-                  <Label htmlFor="instant-country">Billing country</Label>
-                  <select
-                    id="instant-country"
-                    value={country}
-                    onChange={(e) => {
-                      setCountry(e.target.value)
-                      loadQuote(e.target.value)
-                    }}
-                    aria-invalid={Boolean(errors.country)}
-                    aria-describedby={errors.country ? 'instant-country-error' : 'instant-country-note'}
-                    className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm shadow-xs focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                  >
-                    <option value="" disabled>
-                      Select your country…
-                    </option>
-                    {COUNTRIES.map((c) => (
-                      <option key={c.code} value={c.code}>
-                        {c.name}
-                      </option>
-                    ))}
-                  </select>
-                  <p id="instant-country-note" className="text-xs text-muted-foreground">
-                    We use the country you confirm to choose the payment method.
-                  </p>
-                  {errors.country && (
-                    <p id="instant-country-error" role="alert" className="text-xs font-medium text-destructive">
-                      {errors.country}
-                    </p>
-                  )}
-                </div>
+                {/* Task 3: country selector REMOVED — the server detects the
+                    country from the connection and decides the currency;
+                    the customer confirms nothing here. */}
 
                 {/* §8 gateway + exact total line (server quote) */}
                 <div aria-live="polite" className="min-h-[34px]">
@@ -920,6 +940,9 @@ export function InstantDownloadDialog({
               <Button type="button" variant="outline" className="h-11 w-full" onClick={() => onOpenChange(false)}>
                 Done
               </Button>
+              <p className="text-xs text-muted-foreground" role="status" aria-live="polite">
+                Taking you to your download page…
+              </p>
             </div>
           )}
         </div>

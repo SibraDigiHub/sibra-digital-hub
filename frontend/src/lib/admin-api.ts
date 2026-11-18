@@ -62,6 +62,13 @@ export function setAdminCsrfToken(token: string | null): void {
   csrfToken = token
 }
 
+/** Read-only access for beacon-style requests that cannot set headers
+ * (navigator.sendBeacon — abandoned-upload discard). The token is the
+ * same session-bound value adminFetch would put in X-CSRF-Token. */
+export function getAdminCsrfToken(): string | null {
+  return csrfToken
+}
+
 const READ_METHODS = new Set(['GET', 'HEAD', 'OPTIONS'])
 
 /** Central fetch for admin calls: cookie + CSRF + 401 → global event. */

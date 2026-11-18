@@ -147,6 +147,26 @@ function assertCsrf(req: NextRequest, session: AdminSession): void {
   throw new ApiError(403, 'Forbidden — bad origin', 'csrf_origin')
 }
 
+/**
+ * CSRF for beacon-style requests that CANNOT set headers
+ * (`navigator.sendBeacon` — abandoned-upload discard). The same
+ * session-bound token is accepted from the JSON body instead of the
+ * header; origin rules are identical to assertCsrf. Same strength:
+ * only the real admin's session ever sees csrfHash.
+ */
+export function assertCsrfFlexible(req: NextRequest, session: AdminSession, bodyToken: unknown): void {
+  if (READ_METHODS.has(req.method)) return
+  const origin = req.headers.get('origin')
+  const token = req.headers.get('x-csrf-token') ?? (typeof bodyToken === 'string' ? bodyToken : '')
+  const tokenOk = token !== '' && safeEqualHex(token, session.csrfHash)
+  if (origin && allowedOrigins().includes(origin)) {
+    if (!tokenOk) throw new ApiError(403, 'Forbidden — missing or invalid CSRF token', 'csrf_token')
+    return
+  }
+  if (process.env.NODE_ENV !== 'production' && tokenOk) return
+  throw new ApiError(403, 'Forbidden — bad origin', 'csrf_origin')
+}
+
 export interface ResolvedSession {
   session: AdminSession
   admin: AdminUser

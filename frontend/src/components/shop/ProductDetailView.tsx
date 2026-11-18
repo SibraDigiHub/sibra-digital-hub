@@ -21,7 +21,7 @@ import {
 } from 'lucide-react'
 import { parseProduct, useAppStore } from '@/store/app-store'
 import type { License, Product, ProductRow, Zone } from '@/types/marketplace'
-import { formatMoney } from '@/types/marketplace'
+import { VisitorPrice } from '@/components/shop/VisitorPrice'
 import { siteUrl } from '@/lib/site-url'
 import { realCategoryPath, realProductPath, realShopPath } from '@/lib/real-routes'
 import { hydrateCategories, useZoneCategories } from '@/lib/categories'
@@ -251,7 +251,6 @@ export function ProductDetailView({
   // poster), never the default hero photo.
   const mediaImages = productMediaImages(product)
   const images = mediaImages.length > 0 ? mediaImages : ['/images/products/kids-hero.png']
-  const money = formatMoney(product.priceUsd, product.priceInr)
   // T-V Feature B: the video renders via the click-to-play frame — the
   // source arrives from the server only after Play (raw URL never in page).
   const videoPreview = product.videoPreview ?? null
@@ -268,20 +267,20 @@ export function ProductDetailView({
     brand: { '@type': 'Brand', name: product.authorBrand },
     category: product.category,
     url: `${siteUrl()}${realProductPath(product.slug)}`,
-    offers: (
-      [
-        { price: product.priceInr, priceCurrency: 'INR' },
-        { price: product.priceUsd, priceCurrency: 'USD' },
-      ] as const
-    )
-      .filter((o) => o.price > 0)
-      .map((o) => ({
-        '@type': 'Offer',
-        price: o.price,
-        priceCurrency: o.priceCurrency,
-        availability: 'https://schema.org/InStock',
-        url: `${siteUrl()}${realProductPath(product.slug)}`,
-      })),
+    // Task 3: ONE offer = the visible international variant (USD) — the
+    // server HTML is geo-neutral and crawlers/unknown locations always get
+    // USD (owner decision). Never two currencies in the same markup.
+    offers: product.priceUsd > 0
+      ? [
+          {
+            '@type': 'Offer',
+            price: product.priceUsd,
+            priceCurrency: 'USD',
+            availability: 'https://schema.org/InStock',
+            url: `${siteUrl()}${realProductPath(product.slug)}`,
+          },
+        ]
+      : [],
     // Only specs that actually exist in the product data — never invented.
     additionalProperty: (
       [
@@ -566,17 +565,17 @@ export function ProductDetailView({
 
             <div className="relative flex flex-wrap items-end justify-between gap-3">
               <div className="flex items-baseline gap-3">
-                <span
-                  className={cn(
+                <VisitorPrice
+                  usd={product.priceUsd}
+                  inr={product.priceInr}
+                  inrClassName={cn(
                     'text-[2.5rem] font-extrabold leading-none tracking-tight md:text-5xl',
                     isKids
                       ? 'bg-[linear-gradient(120deg,#E67300,#FF8A3D)] bg-clip-text text-transparent'
                       : 'bg-[linear-gradient(120deg,#00F0FF,#00F5A0)] bg-clip-text text-transparent',
                   )}
-                >
-                  {money.inr}
-                </span>
-                <span className="text-lg font-semibold text-muted-foreground">{money.usd}</span>
+                  usdClassName="text-lg font-semibold text-muted-foreground"
+                />
               </div>
               <span
                 className={cn(
@@ -588,7 +587,7 @@ export function ProductDetailView({
               </span>
             </div>
             <p className="relative mt-1 text-[11px] font-medium text-muted-foreground">
-              Final price shown in your currency — inclusive of all taxes.
+              Final price for your region — inclusive of all taxes.
             </p>
 
             <div className="relative mt-4">
@@ -675,8 +674,8 @@ export function ProductDetailView({
                 </div>
                 <p className="mt-3 text-sm text-muted-foreground">
                   {product.instantDownload
-                    ? 'After payment confirmation, we attempt to email your download link. It may also be available on the thank-you page. Delivery timing can vary.'
-                    : "For purchases through an external store, check that store's listing and checkout for delivery details."}
+                    ? '⚡ Instant email delivery — your download link arrives within seconds of payment.'
+                    : 'Delivered by your chosen store (Amazon KDP, Etsy, Gumroad…) right after checkout.'}
                 </p>
               </div>
             </TabsContent>
@@ -748,10 +747,12 @@ export function ProductDetailView({
         />
         <div className="mx-auto flex max-w-3xl items-center gap-3">
           <div className="flex w-[76px] shrink-0 flex-col leading-tight">
-            <span className={cn('text-lg font-extrabold', isKids ? 'text-[#E67300]' : 'text-[#00F0FF]')}>
-              {money.inr}
-            </span>
-            <span className="truncate text-[11px] text-muted-foreground">{money.usd}</span>
+            <VisitorPrice
+              usd={product.priceUsd}
+              inr={product.priceInr}
+              inrClassName={cn('text-lg font-extrabold', isKids ? 'text-[#E67300]' : 'text-[#00F0FF]')}
+              usdClassName="truncate text-[11px] text-muted-foreground"
+            />
           </div>
           <div className="min-w-0 flex-1">
             <CheckoutButtons product={product} primaryOnly />

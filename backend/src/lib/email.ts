@@ -264,6 +264,12 @@ interface DeliveryEmailInput {
   // Layer 2 — verified-review invite (the buyer's own rate page). Optional:
   // when absent the email renders exactly as before.
   rateUrl?: string
+  // Admin resend after the buyer exhausted the download cap: the resend
+  // mints a fresh token + resets the counter, so the email must SAY the
+  // limit was reached and that this link starts a new quota (otherwise
+  // the customer reads a normal-looking email and trusts the dead old one).
+  // Optional — absent keeps the template exactly as always.
+  limitReached?: boolean
 }
 
 /**
@@ -322,15 +328,20 @@ export async function sendDeliveryEmail(input: DeliveryEmailInput): Promise<Emai
   const customerName = escapeHtml(input.customerName)
   const productTitle = escapeHtml(input.productTitle)
 
+  // Admin resend variant: the buyer had hit the download cap, the store has
+  // just reset it and issued this fresh token — say so explicitly, otherwise
+  // the email looks like a duplicate of the (now dead) original link.
+  const limitReached = input.limitReached === true
   const html = `
   <div style="font-family:Segoe UI,Roboto,sans-serif;max-width:560px;margin:0 auto;background:#fffdf6;border-radius:16px;overflow:hidden;border:1px solid #f0e2c0">
     <div style="background:linear-gradient(120deg,#050706,#1a1408);padding:28px;text-align:center">
       <div style="font-size:12px;letter-spacing:3px;color:#e5b842;font-weight:700">SIBRA DIGITAL HUB</div>
-      <h1 style="color:#fae8a7;font-size:22px;margin:10px 0 4px">Your download is ready! 🎉</h1>
+      <h1 style="color:#fae8a7;font-size:22px;margin:10px 0 4px">${limitReached ? 'Your fresh download link is ready! 🎉' : 'Your download is ready! 🎉'}</h1>
     </div>
     <div style="padding:28px;color:#3a3123">
       <p>Hi <strong>${customerName}</strong>,</p>
       <p>Thanks for your purchase of <strong>${productTitle}</strong> (₹${Math.round(input.amountInr)}). Your secure download link is below — valid for <strong>${ttlHours} hours</strong> and <strong>${maxDownloads} downloads</strong>.</p>
+      ${limitReached ? `<p style="font-size:13px;color:#8a7a5c">Your earlier link had reached its ${maxDownloads}-download limit. The store has issued this fresh link for you — it starts a new <strong>${maxDownloads}-download quota</strong>, and the old link no longer works. Please use only the button below.</p>` : ''}
       <p style="text-align:center;margin:26px 0">
         <a href="${input.downloadUrl}" style="background:linear-gradient(120deg,#e5b842,#c9932a);color:#050706;font-weight:800;padding:14px 34px;border-radius:999px;text-decoration:none;display:inline-block">⬇️ Download Now</a>
       </p>
@@ -343,8 +354,16 @@ export async function sendDeliveryEmail(input: DeliveryEmailInput): Promise<Emai
     </div>
   </div>`
 
-  const subject = `⬇️ Your download: ${input.productTitle} — Sibra Digital Hub`
-  return sendEmail({ to: input.to, subject, html, template: 'delivery', orderId: input.orderId })
+  const subject = limitReached
+    ? `⬇️ Your fresh download link: ${input.productTitle} — Sibra Digital Hub`
+    : `⬇️ Your download: ${input.productTitle} — Sibra Digital Hub`
+  return sendEmail({
+    to: input.to,
+    subject,
+    html,
+    template: limitReached ? 'delivery-fresh-link' : 'delivery',
+    orderId: input.orderId,
+  })
 }
 
 // ── T4: security alert emails (admin auth) ──────────────────
