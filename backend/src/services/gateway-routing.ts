@@ -91,7 +91,7 @@ export async function resolveGateway(
   country: string | null | undefined,
   product: RoutableProduct,
   config: GatewayConfig,
-): GatewayDecision {
+): Promise<GatewayDecision> {
   const c = normalizeCountry(country)
   if (!product.instantDownload) {
     return { ok: false, rejection: 'PRODUCT_NOT_INSTANT', message: 'This product is not available for instant download.' }

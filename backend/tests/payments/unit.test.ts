@@ -43,11 +43,62 @@ describe('resolveGateway', () => {
     expect(d).toEqual({ ok: true, gateway: 'razorpay', currency: 'INR', amountMinor: 49900 })
   })
 
-  test('international countries → Razorpay / USD fallback when native currency is not merchant-enabled', async () => {
+  test('international countries → USD fallback when native currency is not merchant-enabled', async () => {
     enableInternational()
-    for (const c of ['US', 'GB', 'AE', 'AU', 'DE', 'NG', 'AF']) {
-      const d = await resolveGateway(c, product, enabled)
-      expect(d).toEqual({ ok: true, gateway: 'razorpay', currency: 'USD', amountMinor: 599 })
+    const savedCurrencies = process.env.RAZORPAY_FOREIGN_CURRENCIES
+    process.env.RAZORPAY_FOREIGN_CURRENCIES = 'USD'
+    try {
+      for (const c of ['US', 'GB', 'AE', 'AU', 'DE', 'NG', 'AF']) {
+        const d = await resolveGateway(c, product, enabled)
+        expect(d).toEqual({ ok: true, gateway: 'razorpay', currency: 'USD', amountMinor: 599 })
+      }
+    } finally {
+      if (savedCurrencies === undefined) delete process.env.RAZORPAY_FOREIGN_CURRENCIES
+      else process.env.RAZORPAY_FOREIGN_CURRENCIES = savedCurrencies
+    }
+  })
+
+  test('merchant-enabled native currencies are selected for international visitors', async () => {
+    enableInternational()
+    const savedCurrencies = process.env.RAZORPAY_FOREIGN_CURRENCIES
+    const originalFetch = globalThis.fetch
+    const date = new Date().toISOString().slice(0, 10)
+
+    process.env.RAZORPAY_FOREIGN_CURRENCIES = 'USD,GBP,AED,EUR,NGN,AUD'
+    resetFxRateCacheForTests()
+
+    globalThis.fetch = (async () => new Response(JSON.stringify([
+      { date, base: 'USD', quote: 'GBP', rate: 0.8 },
+      { date, base: 'USD', quote: 'AED', rate: 3.67 },
+      { date, base: 'USD', quote: 'EUR', rate: 0.9 },
+      { date, base: 'USD', quote: 'NGN', rate: 1500 },
+      { date, base: 'USD', quote: 'AUD', rate: 1.5 },
+    ]), { status: 200, headers: { 'content-type': 'application/json' } })) as unknown as typeof fetch
+
+    try {
+      const cases = [
+        ['GB', 'GBP', 479],
+        ['AE', 'AED', 2198],
+        ['DE', 'EUR', 539],
+        ['NG', 'NGN', 898500],
+        ['AU', 'AUD', 899],
+        ['US', 'USD', 599],
+      ] as const
+
+      for (const [country, currency, amountMinor] of cases) {
+        const decision = await resolveGateway(country, product, enabled)
+        expect(decision).toEqual({
+          ok: true,
+          gateway: 'razorpay',
+          currency,
+          amountMinor,
+        })
+      }
+    } finally {
+      globalThis.fetch = originalFetch
+      resetFxRateCacheForTests()
+      if (savedCurrencies === undefined) delete process.env.RAZORPAY_FOREIGN_CURRENCIES
+      else process.env.RAZORPAY_FOREIGN_CURRENCIES = savedCurrencies
     }
   })
 
@@ -66,7 +117,7 @@ describe('resolveGateway', () => {
     resetFxRateCacheForTests()
     globalThis.fetch = (async () => new Response(JSON.stringify([
       { date: new Date().toISOString().slice(0, 10), base: 'USD', quote: 'EUR', rate: 0.92 },
-    ]), { status: 200, headers: { 'content-type': 'application/json' } })) as typeof fetch
+    ]), { status: 200, headers: { 'content-type': 'application/json' } })) as unknown as typeof fetch
     try {
       const d = await resolveGateway('DE', product, enabled)
       expect(d).toEqual({ ok: true, gateway: 'razorpay', currency: 'EUR', amountMinor: 551 })
@@ -84,7 +135,7 @@ describe('resolveGateway', () => {
     const originalFetch = globalThis.fetch
     process.env.RAZORPAY_FOREIGN_CURRENCIES = 'EUR,USD'
     resetFxRateCacheForTests()
-    globalThis.fetch = (async () => { throw new Error('FX provider unavailable') }) as typeof fetch
+    globalThis.fetch = (async () => { throw new Error('FX provider unavailable') }) as unknown as typeof fetch
     try {
       const d = await resolveGateway('DE', product, enabled)
       expect(d).toEqual({ ok: true, gateway: 'razorpay', currency: 'USD', amountMinor: 599 })
@@ -102,7 +153,7 @@ describe('resolveGateway', () => {
     const originalFetch = globalThis.fetch
     process.env.RAZORPAY_FOREIGN_CURRENCIES = 'EUR'
     resetFxRateCacheForTests()
-    globalThis.fetch = (async () => { throw new Error('FX provider unavailable') }) as typeof fetch
+    globalThis.fetch = (async () => { throw new Error('FX provider unavailable') }) as unknown as typeof fetch
     try {
       const d = await resolveGateway('DE', product, enabled)
       expect(d.ok).toBeFalse()
