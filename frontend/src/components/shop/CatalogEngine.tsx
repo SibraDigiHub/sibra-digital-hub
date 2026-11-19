@@ -148,15 +148,27 @@ export function CatalogEngine({ initial }: { initial?: CatalogInitialData }) {
   const [ratings, setRatings] = useState<Record<string, RatingSummary>>({})
   useEffect(() => {
     const ac = new AbortController()
-    fetch('/api/reviews/product/summary', { signal: ac.signal })
-      .then((r) => (r.ok ? (r.json() as Promise<{ ratings?: Record<string, RatingSummary> }>) : null))
-      .then((d) => {
-        if (d?.ratings) setRatings(d.ratings)
-      })
-      .catch(() => {
-        /* cards simply render without the rating pill */
-      })
-    return () => ac.abort()
+
+    const loadRatings = () => {
+      fetch('/api/reviews/product/summary', { cache: 'no-store', signal: ac.signal })
+        .then((r) => (r.ok ? (r.json() as Promise<{ ratings?: Record<string, RatingSummary> }>) : null))
+        .then((d) => {
+          if (d?.ratings) setRatings(d.ratings)
+        })
+        .catch(() => {
+          /* cards simply render without the rating pill */
+        })
+    }
+
+    void loadRatings()
+    const interval = window.setInterval(loadRatings, 60_000)
+    window.addEventListener('focus', loadRatings)
+
+    return () => {
+      ac.abort()
+      window.clearInterval(interval)
+      window.removeEventListener('focus', loadRatings)
+    }
   }, [reload])
 
   // Fetch products — loading/error are derived from the request key

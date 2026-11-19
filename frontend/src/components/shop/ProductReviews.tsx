@@ -8,7 +8,7 @@
 // pixel-identical to before.
 // ═══════════════════════════════════════════════════════════
 
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useState } from 'react'
 import { BadgeCheck, Star } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import type { PublicProductReview, RatingSummary } from '@/types/marketplace'
@@ -34,14 +34,18 @@ function reviewDate(iso: string): string {
 export function ProductReviews({ slug, isKids }: { slug: string; isKids: boolean }) {
   const [summary, setSummary] = useState<RatingSummary | null>(null)
   const [reviews, setReviews] = useState<PublicProductReview[] | null>(null)
-  const started = useRef(false)
 
   useEffect(() => {
-    if (started.current) return
-    started.current = true
-    void (async () => {
+    const controller = new AbortController()
+    setSummary(null)
+    setReviews(null)
+
+    const loadReviews = async () => {
       try {
-        const res = await fetch(`/api/reviews/product?slug=${encodeURIComponent(slug)}`)
+        const res = await fetch(
+          `/api/reviews/product?slug=${encodeURIComponent(slug)}`,
+          { cache: 'no-store', signal: controller.signal },
+        )
         if (!res.ok) return
         const data = (await res.json()) as { summary?: RatingSummary; reviews?: PublicProductReview[] }
         setSummary(data.summary ?? null)
@@ -49,7 +53,17 @@ export function ProductReviews({ slug, isKids }: { slug: string; isKids: boolean
       } catch {
         // Reviews are optional decoration — a failed fetch renders nothing.
       }
-    })()
+    }
+
+    void loadReviews()
+    const interval = window.setInterval(() => void loadReviews(), 30_000)
+    window.addEventListener('focus', loadReviews)
+
+    return () => {
+      controller.abort()
+      window.clearInterval(interval)
+      window.removeEventListener('focus', loadReviews)
+    }
   }, [slug])
 
   // No approved reviews yet → render nothing (page unchanged).

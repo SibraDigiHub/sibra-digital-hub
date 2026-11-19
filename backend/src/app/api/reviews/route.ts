@@ -1,16 +1,21 @@
 // GET/POST/DELETE /api/reviews — testimonials (public read, admin write)
 import { NextRequest } from 'next/server'
-import { asHandler, cachedJson, json, parseBody, badRequest } from '@/lib/api'
+import { asHandler, json, parseBody, badRequest } from '@/lib/api'
 import { isAdmin } from '@/lib/admin-auth'
 import { unauthorized } from '@/lib/api'
 import { reviewRepo } from '@/repositories/content-repo'
 import { createReview, reviewCreateSchema } from '@/services/content-service'
+import { publicWallReviews } from '@/services/review-service'
 
 export const dynamic = 'force-dynamic'
 
-export const GET = asHandler(async (req: NextRequest) => {
-  const reviews = await reviewRepo.listAll()
-  return cachedJson(req, { reviews })
+export const GET = asHandler(async () => {
+  const [productReviews, testimonials] = await Promise.all([
+    publicWallReviews(),
+    reviewRepo.listAll(),
+  ])
+  const reviews = [...productReviews, ...testimonials]
+  return json({ reviews })
 })
 
 export const POST = asHandler(async (req: NextRequest) => {

@@ -333,11 +333,12 @@ export function InstantDownloadDialog({
             orderId,
           }),
         })
-        const data = (await res.json().catch(() => ({}))) as { ok?: boolean; order?: { customerEmail?: string; status?: string }; downloadUrl?: string | null; error?: string }
+        const data = (await res.json().catch(() => ({}))) as { ok?: boolean; order?: { customerEmail?: string; status?: string }; downloadUrl?: string | null; rateUrl?: string | null; error?: string }
         if (res.ok && data.ok) {
           // Winner mint: carry the buyer's one-click download into the
           // thank-you page (watch-mode orders keep their watch link only).
           stashDownloadUrl(product.deliveryMode !== 'watch' && data.downloadUrl ? downloadPageUrl(data.downloadUrl) : '')
+          stashRateUrl(data.rateUrl ?? '')
           // Verified + fulfilled — the status poll confirms PAID and flips to
           // the success step (single source of truth, no double celebration).
           setPaidEmail(data.order?.customerEmail ?? email.trim())

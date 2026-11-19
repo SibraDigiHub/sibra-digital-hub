@@ -147,5 +147,6 @@ export const POST = asHandler(async (req: NextRequest) => {
     ...(result.outcome === 'duplicate' ? { alreadyFulfilled: true } : {}),
     order: paid ? publicOrderDTO(paid) : null,
     downloadUrl: result.token ? `/api/download/${result.token}` : null,
+    rateUrl: result.token ? `/#/rate/${result.token}` : null,
   })
 })
