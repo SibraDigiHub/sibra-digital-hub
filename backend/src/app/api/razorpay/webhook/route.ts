@@ -10,7 +10,7 @@
 //  • the order is matched ONLY by Razorpay notes.orderRef/orderId
 //    (no "latest pending order for this email" fallback);
 //  • the paid amount + currency must equal the order's DB amount
-//    (order.currency — INR for India, the configured foreign currency
+//    (order.currency — INR for India, selected native currency or USD fallback
 //    otherwise) or the event is rejected (order stays pending);
 //  • fulfillment goes through the single idempotent fulfillOrder();
 //  • never logs signatures, tokens, payloads or emails.

@@ -7,7 +7,7 @@
 //      compared in constant time (tampered → 400 + audit, nothing processed);
 //   2. the payment is then fetched server-side and its captured amount +
 //      currency must equal the ORDER's DB amount (order.currency — INR for
-//      India, the configured foreign currency otherwise) — the client is
+//      India, the selected native currency or USD fallback otherwise) — the client is
 //      never trusted about amounts (mismatch → 409 + audit);
 //   3. fulfillment goes through the single idempotent fulfillOrder().
 // In demo mode (no Razorpay keys) the route answers 400 — demo checkout

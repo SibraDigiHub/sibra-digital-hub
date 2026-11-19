@@ -1,6 +1,7 @@
 // Dashboard KPIs + analytics aggregates. Pure rules over analyticsRepo data.
 import { analyticsRepo } from '@/repositories/analytics-repo'
 import { logger } from '@/lib/logger'
+import { currencyExponentFactor } from '@/lib/money'
 
 function startOfToday() {
   const d = new Date()
@@ -22,12 +23,22 @@ export async function dashboardStats() {
     analyticsRepo.views24h(),
   ])
 
-  const paidRevenueInr = paidAll.reduce((s, o) => s + o.amountInr, 0)
-  const sumSince = (since: Date) => paidAll.filter((o) => o.createdAt >= since).reduce((s, o) => s + o.amountInr, 0)
-  // §9: money is summed PER CURRENCY — USD sums use amountMinor only.
+  const inrPaid = paidAll.filter((o) => o.currency === 'INR')
+  const paidRevenueInr = inrPaid.reduce((s, o) => s + (o.amountMinor ?? Math.round(o.amountInr * 100)) / 100, 0)
+  const sumSince = (since: Date) =>
+    inrPaid.filter((o) => o.createdAt >= since).reduce((s, o) => s + (o.amountMinor ?? Math.round(o.amountInr * 100)) / 100, 0)
+  // Never combine unlike currencies. Keep the USD KPI and expose a grouped
+  // summary for any other native currencies that the merchant has enabled.
   const usdPaid = paidAll.filter((o) => o.currency === 'USD')
   const usdSumSince = (since: Date) =>
     usdPaid.filter((o) => o.createdAt >= since).reduce((s, o) => s + (o.amountMinor ?? 0), 0)
+  const revenueByCurrency = [...paidAll.reduce((map, order) => {
+    const currency = order.currency || 'INR'
+    const factor = currencyExponentFactor(currency) ?? 100
+    const amountMinor = order.amountMinor ?? Math.round(order.amountInr * 100)
+    map.set(currency, (map.get(currency) ?? 0) + amountMinor / factor)
+    return map
+  }, new Map<string, number>())].map(([currency, amount]) => ({ currency, amount }))
 
   const alerts: string[] = []
   if (failedEmailCount > 0) alerts.push(`${failedEmailCount} paid order(s) missing delivery email — check Orders → resend.`)
@@ -49,12 +60,12 @@ export async function dashboardStats() {
     revenueToday: sumSince(startOfToday()),
     revenue7d: sumSince(daysAgo(7)),
     revenue30d: sumSince(daysAgo(30)),
-    // Dual payment: USD KPIs (grouped by currency — never added to INR).
+    // USD KPI remains in cents; native currencies are exposed in revenueByCurrency.
     revenueUsdMinor: usdPaid.reduce((s, o) => s + (o.amountMinor ?? 0), 0),
     revenueUsdTodayMinor: usdSumSince(startOfToday()),
     revenueUsd30dMinor: usdSumSince(daysAgo(30)),
     usdPaidOrderCount: usdPaid.length,
-    averageOrderValueInr: paidOrdersAll > 0 ? Math.round((paidRevenueInr / paidOrdersAll) * 100) / 100 : 0,
+    averageOrderValueInr: inrPaid.length > 0 ? Math.round((paidRevenueInr / inrPaid.length) * 100) / 100 : 0,
     failedEmailCount,
     views24h,
     alerts,
@@ -121,12 +132,14 @@ export async function analyticsWindow(days: number) {
   for (const o of paidOrdersWindow) {
     const row = seriesIndex.get(o.createdAt.toISOString().slice(0, 10))
     if (row) {
-      row.revenue += o.amountInr
+      if (o.currency === 'INR') {
+        row.revenue += (o.amountMinor ?? Math.round(o.amountInr * 100)) / 100
+      }
       row.orders += 1
     }
   }
 
-  const sumSince = (sinceDate: Date) => paidOrdersAll.filter((o) => o.createdAt >= sinceDate).reduce((s, o) => s + o.amountInr, 0)
+  const sumSince = (sinceDate: Date) => paidOrdersAll.filter((o) => o.currency === 'INR' && o.createdAt >= sinceDate).reduce((s, o) => s + (o.amountMinor ?? Math.round(o.amountInr * 100)) / 100, 0)
 
   logger.debug({ days, funnelViews: productViews }, 'analytics computed')
 
@@ -144,7 +157,14 @@ export async function analyticsWindow(days: number) {
       today: sumSince(startOfToday()),
       last7d: sumSince(daysAgo(7)),
       last30d: sumSince(daysAgo(30)),
-      total: paidOrdersAll.reduce((s, o) => s + o.amountInr, 0),
+      total: paidOrdersAll.filter((o) => o.currency === 'INR').reduce((s, o) => s + (o.amountMinor ?? Math.round(o.amountInr * 100)) / 100, 0),
+      byCurrency: [...paidOrdersAll.reduce((map, order) => {
+        const currency = order.currency || 'INR'
+        const factor = currencyExponentFactor(currency) ?? 100
+        const amountMinor = order.amountMinor ?? Math.round(order.amountInr * 100)
+        map.set(currency, (map.get(currency) ?? 0) + amountMinor / factor)
+        return map
+      }, new Map<string, number>())].map(([currency, amount]) => ({ currency, amount })),
       series,
     },
     uniqueVisitors: uniqueVisitors.length,

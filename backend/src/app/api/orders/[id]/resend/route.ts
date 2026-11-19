@@ -1,5 +1,6 @@
 // POST /api/orders/[id]/resend — admin re-sends delivery email (fresh 72h token)
 import { logger } from '@/lib/logger'
+import { formatMinor, orderExpectedMinor } from '@/lib/money'
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 import { tooMany, asHandler } from '@/lib/api'
@@ -59,6 +60,7 @@ export const POST = asHandler(async (req: NextRequest, { params }: { params: Pro
       // parity with the original delivery email.
       rateUrl: `${siteUrl}/#/rate/${plain}`,
       amountInr: order.amountInr,
+      amountDisplay: formatMinor(orderExpectedMinor(order), order.currency),
       orderId: order.id,
       limitReached,
     })

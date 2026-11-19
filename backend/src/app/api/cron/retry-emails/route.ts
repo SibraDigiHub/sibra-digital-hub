@@ -13,6 +13,7 @@ import { mintGrantForOrder } from '@/services/watch-service'
 import { downloadTtlHours } from '@/config/env'
 import { writeAudit } from '@/lib/audit'
 import { logger } from '@/lib/logger'
+import { formatMinor, orderExpectedMinor } from '@/lib/money'
 import { recordCronSuccess, maybeAlertStaleReconcile, RETRY_EMAILS_HEARTBEAT_KEY } from '@/services/cron-heartbeat'
 
 export const dynamic = 'force-dynamic'
@@ -89,6 +90,7 @@ async function retryRow(orderId: string, template: string): Promise<boolean> {
         ttlHours: order.product.watchTtlHours ?? downloadTtlHours(),
         maxConcurrent: order.product.watchMaxConcurrent ?? 2,
         amountInr: order.amountInr,
+        amountDisplay: formatMinor(orderExpectedMinor(order), order.currency),
         orderId: order.id,
       })
     : await sendDeliveryEmail({
@@ -97,6 +99,7 @@ async function retryRow(orderId: string, template: string): Promise<boolean> {
         productTitle: order.product.title,
         downloadUrl: `${siteUrl}/#/download/${plain}`,
         amountInr: order.amountInr,
+        amountDisplay: formatMinor(orderExpectedMinor(order), order.currency),
         orderId: order.id,
       })
 

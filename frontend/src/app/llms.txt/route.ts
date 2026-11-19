@@ -46,11 +46,8 @@ export async function GET(): Promise<Response> {
 
   const productLines = keyProducts
     .map((p) => {
-      const price =
-        p.zone === "kids"
-          ? `₹${Math.round(p.priceInr)} / $${p.priceUsd.toFixed(2)}`
-          : `$${p.priceUsd.toFixed(2)} / ₹${Math.round(p.priceInr)}`;
-      return `- [${p.title}](${base}/product/${p.slug}): ${p.description.trim() || "Instant digital download"} — ${price}.`;
+      const price = `India base price ₹${Math.round(p.priceInr)}; USD base price $${p.priceUsd.toFixed(2)}`;
+      return `- [${p.title}](${base}/product/${p.slug}): ${p.description.trim() || "Instant digital download"} — ${price}. International checkout may use a merchant-enabled local currency converted from the USD base price.`;
     })
     .join("\n");
 
@@ -84,7 +81,7 @@ ${productLines}
 ${legalLines}
 
 - [About Us](${base}/#/about): Who runs ${SITE_NAME}, what it sells and how instant digital delivery works.
-- [Pricing Details](${base}/#/pricing): How prices work — one-time purchases in ₹ (India) or $ (international) via Razorpay Checkout — plus the live catalog price list.
+- [Pricing Details](${base}/#/pricing): How prices work — India uses INR base prices; international checkout uses a merchant-enabled local currency when available, otherwise USD, with daily FX conversion from the USD base price.
 `;
 
   return new Response(body, {

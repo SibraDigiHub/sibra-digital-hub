@@ -3,10 +3,9 @@
 //
 // The country selector is gone: the platform's geo header
 // (x-vercel-ip-country / cf-ipcountry — set by our edge/proxy,
-// never forgeable by the browser) decides the currency:
-//   India   → INR (product.priceInr)
-//   other / unknown → international USD (product.priceUsd)
-// No live FX conversion ever. The client-sent `country` field is
+// never forgeable by the browser) decides the billing country.
+// Currency selection and FX are resolved server-side from this country.
+// The client-sent `country` field is
 // still ACCEPTED (old cached bundles stay valid) but IGNORED.
 // Raw IPs are never stored — the existing salted-hash handling is
 // untouched; orders keep billingCountry + ipCountry as before.

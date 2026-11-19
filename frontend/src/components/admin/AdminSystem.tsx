@@ -113,7 +113,7 @@ export default function AdminSystem() {
     ? [
         { key: 'database', label: 'Database (PostgreSQL)', ok: integrations.database, hint: 'Products, orders, events.' },
         { key: 'razorpay', label: 'Razorpay (India, INR)', ok: integrations.razorpay, hint: `RAZORPAY_KEY_ID + RAZORPAY_KEY_SECRET — demo mode until set.${info?.payments ? ` Mode: ${info.payments.razorpayMode}.` : ''}` },
-        { key: 'international', label: 'International checkout (Razorpay)', ok: integrations.international, hint: `INTERNATIONAL_CHECKOUT_ENABLED=true after Razorpay International is activated in the Dashboard.${info?.payments ? ` Currencies: ${(info.payments.foreignCurrencies ?? []).join(', ') || '—'}.` : ''}` },
+        { key: 'international', label: 'International checkout (Razorpay)', ok: integrations.international, hint: `Enable after Razorpay International is activated. Set RAZORPAY_FOREIGN_CURRENCIES to the exact currencies enabled for this merchant (keep USD as fallback).${info?.payments ? ` Currencies: ${(info.payments.foreignCurrencies ?? []).join(', ') || '—'}.` : ''}` },
         { key: 'imagekit', label: 'ImageKit (CDN uploads)', ok: integrations.imagekit, hint: 'IMAGEKIT_PRIVATE_KEY + NEXT_PUBLIC_IMAGEKIT_URL_ENDPOINT.' },
         { key: 'resend', label: 'Resend (delivery email)', ok: integrations.resend, hint: 'RESEND_API_KEY — emails are logged, not sent, until set.' },
         { key: 'authSecrets', label: 'Auth secrets', ok: integrations.authSecrets, hint: 'ENCRYPTION_KEY + SESSION_PEPPER (T4 admin auth).' },
