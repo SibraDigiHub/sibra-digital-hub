@@ -183,7 +183,7 @@ export default function RootLayout({
         <script
           dangerouslySetInnerHTML={{
             __html:
-              "(function(){window.__sdhBoot=(window.__sdhBoot||0)+1;document.documentElement.dataset.sdhBoot='1';try{var c='';var tz='';try{tz=(Intl.DateTimeFormat().resolvedOptions()||{}).timeZone||''}catch(e){}if(tz==='Asia/Calcutta'||tz==='Asia/Kolkata')c='IN';if(!c){var m=document.cookie.match(/(?:^|; )sdh_geo=([A-Z]{2})/);c=m?m[1]:''}if(!c){var ls=navigator.languages||[navigator.language||''];var il=/^(hi|bn|ta|te|mr|gu|kn|ml|pa|or|as|ur|sa)$/;for(var i=0;i<ls.length;i++){var p=(ls[i]||'').toLowerCase().split('-');if(p[1]==='in'||il.test(p[0])){c='IN';break}}}document.documentElement.dataset.currency=c==='IN'?'INR':'USD'}catch(e){document.documentElement.dataset.currency='USD'}})()",
+              "(function(){window.__sdhBoot=(window.__sdhBoot||0)+1;document.documentElement.dataset.sdhBoot='1';try{var m=document.cookie.match(/(?:^|; )sdh_geo=([A-Z]{2})/);document.documentElement.dataset.currency=m&&m[1]==='IN'?'INR':'USD'}catch(e){document.documentElement.dataset.currency='USD'}})()",
           }}
         />
         {/* Legacy /#/… links → real URLs (once per page load; hash views

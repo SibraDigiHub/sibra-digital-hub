@@ -124,47 +124,23 @@ export function applyCurrencyToDom(currency: VisitorCurrency | null): void {
 let inflight: Promise<VisitorCurrency> | null = null
 
 /**
- * Resolve once per page. Resolution order (no wrong-currency exposure):
- *   1. Device timezone (Asia/Calcutta|Asia/Kolkata ⇒ INR) — synchronous.
- *      STRONGEST client signal and checked BEFORE the cookie: a stale
- *      `sdh_geo=US` cookie from an earlier weak-signal visit can never
- *      pin an Indian device to dollars. Persists cookie=IN to heal it.
- *   2. sdh_geo cookie (returning visitor) — synchronous.
- *   3. navigator.languages (first-visit Indian browser) — synchronous,
- *      no fetch. Persists the cookie so the next visit is instant too.
- *   4. /api/geo (one async fetch) — platform IP geo header refines the
- *      ambiguous case (Indian on a foreign-device setup) and persists.
- *   5. USD (fetch failed or non-Indian) — the safe default.
+ * Resolve the display currency from the server's current country detection.
+ * The geo cookie is only an instant pre-paint hint; it must not override
+ * the current IP-based country, especially when a visitor changes VPN.
  */
 export function resolveVisitorCurrency(): Promise<VisitorCurrency> {
-  const tzCurrency = visitorCurrencyFromTimezone()
-  if (tzCurrency) {
-    applyCurrencyToDom(tzCurrency)
-    persistGeoCookie('IN')
-    return Promise.resolve(tzCurrency)
-  }
-  const cookie = visitorCurrencyFromCookie()
-  if (cookie) {
-    applyCurrencyToDom(cookie)
-    return Promise.resolve(cookie)
-  }
-  const nav = visitorCurrencyFromNavigator()
-  if (nav) {
-    applyCurrencyToDom(nav)
-    persistGeoCookie('IN')
-    return Promise.resolve(nav)
-  }
   if (!inflight) {
-    inflight = fetch('/api/geo', {
-      cache: 'no-store',
-      headers: clientTimezoneHeaders(),
-    })
+    inflight = fetch('/api/geo', { cache: 'no-store', headers: clientTimezoneHeaders() })
       .then((r) => (r.ok ? r.json() : {}))
-      .then((d: { country?: string }) => currencyForCountry(d?.country))
-      .catch(() => 'USD' as VisitorCurrency)
-      .then((c) => {
-        applyCurrencyToDom(c)
-        return c
+      .then((d: { country?: string }) => {
+        const currency = currencyForCountry(d?.country)
+        applyCurrencyToDom(currency)
+        return currency
+      })
+      .catch(() => {
+        const cookieCurrency = visitorCurrencyFromCookie() ?? 'USD'
+        applyCurrencyToDom(cookieCurrency)
+        return cookieCurrency
       })
   }
   return inflight
