@@ -1,21 +1,17 @@
 // ═══════════════════════════════════════════════════════════
-// Gateway routing (single-gateway migration §6) — ONE pure
-// function that decides the Razorpay currency + amount from
-// the CONFIRMED billing country and the DB product. The client
-// can never choose or override any of these; every unsupported
-// combination gets a stable code + friendly message (marketplace
-// buttons hint). No automatic conversion, ever.
-//
-//   India                → Razorpay / INR  (product.priceInr)
-//   International, flag on → Razorpay / first configured
-//     foreign currency (default USD, product.priceUsd). A configured
-//     currency without a price field rejects gracefully until the
-//     owner adds its price.
-//   International, flag off → INTERNATIONAL_DISABLED (marketplace hint)
+// Server-authoritative gateway routing.
+// India uses the admin-maintained INR price. International visitors use
+// their country's native currency only when Razorpay supports it AND the
+// merchant has enabled it; otherwise USD is the fallback. International
+// prices are converted from product.priceUsd using a daily cached FX rate.
+// The exact rounded minor-unit amount is snapshotted on the order.
 // ═══════════════════════════════════════════════════════════
 
 import { internationalCheckoutEnabled, razorpayBlockedCountries, razorpayForeignCurrencies } from '@/config/env'
-import { toMinor } from '@/lib/money'
+import { toCurrencyMinor, toMinor } from '@/lib/money'
+import { currencyForCountryCode } from '@/lib/country-currency'
+import { usdExchangeRate } from '@/services/currency-rates'
+import { isRazorpaySupportedCurrency } from '@/lib/razorpay'
 
 /** 'paypal' is LEGACY ONLY — historical rows keep it readable; no new PayPal order can be created. */
 export type Gateway = 'razorpay'
@@ -39,7 +35,7 @@ export type QuoteRejection =
   | 'PRODUCT_NOT_DELIVERABLE' // no deliverable configured
   | 'NO_INR_PRICE' // India but the INR price is missing/≤0
   | 'NO_USD_PRICE' // USD billed but the USD price is missing/≤0
-  | 'NO_FOREIGN_PRICE' // configured foreign currency has no price source yet
+  | 'NO_FOREIGN_PRICE' // no merchant-enabled supported currency has a usable FX rate
   | 'GATEWAY_DISABLED' // Razorpay is switched off
   | 'COUNTRY_BLOCKED' // RAZORPAY_BLOCKED_COUNTRIES (legacy alias honoured)
   | 'INTERNATIONAL_DISABLED' // INTERNATIONAL_CHECKOUT_ENABLED=false
@@ -67,13 +63,31 @@ export function normalizeCountry(country: string | null | undefined): string | n
   return /^[A-Z]{2}$/.test(c) ? c : null
 }
 
+export interface VisitorCurrencyChoice {
+  currency: string
+  rate: number
+  rateUpdatedAt: number | null
+}
+
+/** Resolve the currency the merchant can actually charge for this country. */
+export async function visitorCurrencyChoice(country: string): Promise<VisitorCurrencyChoice | null> {
+  const native = currencyForCountryCode(country)
+  const enabled = new Set(razorpayForeignCurrencies().filter(isRazorpaySupportedCurrency))
+  const candidates = native && isRazorpaySupportedCurrency(native) && enabled.has(native) ? [native] : []
+  if (!candidates.includes('USD') && enabled.has('USD')) candidates.push('USD')
+
+  for (const currency of candidates) {
+    const fx = await usdExchangeRate(currency)
+    if (fx) return { currency, rate: fx.rate, rateUpdatedAt: fx.updatedAt }
+  }
+  return null
+}
+
 /**
- * The authoritative routing rule (§6): India → Razorpay/INR, everywhere
- * else → Razorpay in the configured foreign currency, gated by
- * INTERNATIONAL_CHECKOUT_ENABLED. Prices always come from the product
- * row; missing prices are rejections, never conversions.
+ * Resolve the exact server-side currency and amount. FX is applied only to
+ * the USD base price; India continues to use its separate INR base price.
  */
-export function resolveGateway(
+export async function resolveGateway(
   country: string | null | undefined,
   product: RoutableProduct,
   config: GatewayConfig,
@@ -113,16 +127,20 @@ export function resolveGateway(
   }
   if (!config.razorpayEnabled) return { ok: false, rejection: 'GATEWAY_DISABLED', message: MARKETPLACE_HINT }
 
-  const [currency] = razorpayForeignCurrencies()
-  if (!currency) return { ok: false, rejection: 'NO_FOREIGN_PRICE', message: MARKETPLACE_HINT }
-  // The USD price field is the only foreign-currency price that exists today.
-  // A configured non-USD currency has no admin price source yet — it rejects
-  // gracefully until the owner adds one (charging the USD number in another
-  // currency would be an unconverted, wrong amount).
-  if (currency !== 'USD') return { ok: false, rejection: 'NO_FOREIGN_PRICE', message: MARKETPLACE_HINT }
-  const usd = toMinor(product.priceUsd)
-  if (usd === null) return { ok: false, rejection: 'NO_USD_PRICE', message: MARKETPLACE_HINT }
-  return { ok: true, gateway: 'razorpay', currency, amountMinor: usd }
+  const choice = await visitorCurrencyChoice(c)
+  if (!choice) return { ok: false, rejection: 'NO_FOREIGN_PRICE', message: MARKETPLACE_HINT }
+  if (choice.currency === 'USD') {
+    const usd = toMinor(product.priceUsd)
+    if (usd === null) return { ok: false, rejection: 'NO_USD_PRICE', message: MARKETPLACE_HINT }
+    return { ok: true, gateway: 'razorpay', currency: 'USD', amountMinor: usd }
+  }
+  const usdBase = product.priceUsd
+  if (typeof usdBase !== 'number' || !Number.isFinite(usdBase) || usdBase <= 0) {
+    return { ok: false, rejection: 'NO_USD_PRICE', message: MARKETPLACE_HINT }
+  }
+  const amountMinor = toCurrencyMinor(usdBase * choice.rate, choice.currency)
+  if (amountMinor === null) return { ok: false, rejection: 'NO_FOREIGN_PRICE', message: MARKETPLACE_HINT }
+  return { ok: true, gateway: 'razorpay', currency: choice.currency, amountMinor }
 }
 
 /**

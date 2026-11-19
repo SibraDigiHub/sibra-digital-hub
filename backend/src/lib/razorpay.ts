@@ -28,6 +28,7 @@
 
 import crypto from 'crypto'
 import { env, razorpayModeWarning } from '@/config/env'
+export { currencyExponentFactor, toCurrencyMinor } from '@/lib/money'
 
 const OUTBOUND_TIMEOUT_MS = 10_000
 /** Max attempts for idempotent GETs (1 initial + 1 retry). */
@@ -62,28 +63,23 @@ function basicAuth(): string {
   return Buffer.from(`${process.env.RAZORPAY_KEY_ID}:${process.env.RAZORPAY_KEY_SECRET}`).toString('base64')
 }
 
-// ── Currency exponent table (migration plan §2.5 / master §6) ──
-// Amounts are integer MINOR units everywhere; the exponent decides the
-// minor-unit factor. Never assume two decimals. Currencies outside this
-// table are refused by the router, never guessed. Exponents per ISO-4217
-// for the currencies Razorpay documents for international payments.
-const CURRENCY_EXPONENTS: Record<string, number> = {
-  INR: 2, USD: 2, EUR: 2, GBP: 2, CAD: 2, AUD: 2, SGD: 2, AED: 2, NZD: 2,
-  CHF: 2, HKD: 2, JPY: 0, KRW: 0, MYR: 2, THB: 2, SAR: 2, QAR: 2, OMR: 3,
-  BHD: 3, KWD: 3, BND: 2, ZAR: 2, SEK: 2, NOK: 2, DKK: 2, MXN: 2, BRL: 2,
-}
+// Razorpay's published international-payment currency list. Merchant-level
+// activation is a separate requirement and is enforced by RAZORPAY_FOREIGN_CURRENCIES.
+const RAZORPAY_SUPPORTED_CURRENCIES = new Set([
+  'AED','ALL','AMD','AUD','AWG','AZN','BAM','BBD','BDT','BGN','BHD','BIF','BMD',
+  'BND','BOB','BRL','BSD','BTN','BWP','BZD','CAD','CHF','CLP','CNY','COP','CRC',
+  'CUP','CVE','CZK','DJF','DKK','DOP','DZD','EGP','ETB','EUR','FJD','GBP','GHS',
+  'GIP','GMD','GNF','GTQ','GYD','HKD','HNL','HRK','HTG','HUF','IDR','ILS','INR',
+  'IQD','ISK','JMD','JOD','JPY','KES','KGS','KHR','KMF','KRW','KWD','KYD','KZT',
+  'LAK','LKR','LRD','LSL','MAD','MDL','MGA','MKD','MMK','MNT','MOP','MUR','MVR',
+  'MWK','MXN','MYR','MZN','NAD','NGN','NIO','NOK','NPR','NZD','OMR','PEN','PGK',
+  'PHP','PKR','PLN','PYG','QAR','RON','RSD','RUB','RWF','SAR','SCR','SEK','SGD',
+  'SLL','SOS','SVC','SZL','THB','TND','TRY','TTD','TWD','TZS','UAH','UGX','USD',
+  'UYU','UZS','VND','VUV','XAF','XCD','XOF','XPF','YER','ZAR','ZMW',
+])
 
-/** 10^exponent for a supported currency, or null when unsupported (never guessed). */
-export function currencyExponentFactor(currency: string): number | null {
-  const exp = CURRENCY_EXPONENTS[currency.toUpperCase()]
-  return exp === undefined ? null : 10 ** exp
-}
-
-/** Major units → minor units for a supported currency, or null when unsupported. */
-export function toCurrencyMinor(major: number, currency: string): number | null {
-  if (typeof major !== 'number' || !Number.isFinite(major) || major <= 0) return null
-  const factor = currencyExponentFactor(currency)
-  return factor === null ? null : Math.round(major * factor)
+export function isRazorpaySupportedCurrency(currency: string): boolean {
+  return RAZORPAY_SUPPORTED_CURRENCIES.has(currency.trim().toUpperCase())
 }
 
 // ── Error mapping (migration plan §2.5): stable internal codes, ──
@@ -123,6 +119,9 @@ export async function createRazorpayOrder(opts: {
   notes: Record<string, string>
 }): Promise<RazorpayOrderResult> {
   if (!razorpayConfigured()) return { ok: false, code: 'RAZORPAY_NOT_CONFIGURED' }
+  if (!isRazorpaySupportedCurrency(opts.currency) || !Number.isSafeInteger(opts.amountMinor) || opts.amountMinor <= 0) {
+    return { ok: false, code: 'RAZORPAY_REJECTED', error: 'invalid_currency_or_amount' }
+  }
   warnIfRazorpayModeMismatch()
   let lastCode: RazorpayFailureCode = 'RAZORPAY_UNAVAILABLE'
   let lastError = 'unknown'

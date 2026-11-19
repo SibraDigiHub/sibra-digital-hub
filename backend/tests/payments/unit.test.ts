@@ -7,8 +7,10 @@
 import { afterAll, describe, expect, test } from 'bun:test'
 import crypto from 'node:crypto'
 import { resolveGateway, normalizeCountry, type RoutableProduct } from '@/services/gateway-routing'
+import { currencyForCountryCode } from '@/lib/country-currency'
+import { resetFxRateCacheForTests } from '@/services/currency-rates'
 import { toMinor, formatMinor } from '@/lib/money'
-import { verifyCheckoutSignature, verifyWebhookSignature, toCurrencyMinor, currencyExponentFactor } from '@/lib/razorpay'
+import { verifyCheckoutSignature, verifyWebhookSignature, toCurrencyMinor, currencyExponentFactor, isRazorpaySupportedCurrency } from '@/lib/razorpay'
 import { generateToken, hashToken } from '@/lib/delivery'
 import { testPaymentFulfillmentBlocked, razorpayBlockedCountries, internationalCheckoutEnabled } from '@/config/env'
 
@@ -36,56 +38,101 @@ function enableInternational(): void {
 
 // ── resolveGateway table (§6) ─────────────────────────────
 describe('resolveGateway', () => {
-  test('India → Razorpay / INR / priceInr minor units', () => {
-    const d = resolveGateway('IN', product, enabled)
+  test('India → Razorpay / INR / priceInr minor units', async () => {
+    const d = await resolveGateway('IN', product, enabled)
     expect(d).toEqual({ ok: true, gateway: 'razorpay', currency: 'INR', amountMinor: 49900 })
   })
 
-  test('international countries → Razorpay / USD / priceUsd minor units (flag on)', () => {
+  test('international countries → Razorpay / USD fallback when native currency is not merchant-enabled', async () => {
     enableInternational()
-    for (const c of ['US', 'GB', 'AE', 'AU', 'DE']) {
-      const d = resolveGateway(c, product, enabled)
+    for (const c of ['US', 'GB', 'AE', 'AU', 'DE', 'NG', 'AF']) {
+      const d = await resolveGateway(c, product, enabled)
       expect(d).toEqual({ ok: true, gateway: 'razorpay', currency: 'USD', amountMinor: 599 })
     }
   })
 
-  test('international flag OFF → INTERNATIONAL_DISABLED (marketplace fallback)', () => {
+  test('international flag OFF → INTERNATIONAL_DISABLED (marketplace fallback)', async () => {
     process.env.INTERNATIONAL_CHECKOUT_ENABLED = 'false'
-    const d = resolveGateway('US', product, enabled)
+    const d = await resolveGateway('US', product, enabled)
     expect(d.ok).toBeFalse()
     if (!d.ok) expect(d.rejection).toBe('INTERNATIONAL_DISABLED')
   })
 
-  test('a configured non-USD currency has no price source yet → NO_FOREIGN_PRICE (never a conversion)', () => {
+  test('merchant-enabled native currency converts USD base price using a daily FX rate', async () => {
     enableInternational()
-    process.env.RAZORPAY_FOREIGN_CURRENCIES = 'EUR'
+    const savedCurrencies = process.env.RAZORPAY_FOREIGN_CURRENCIES
+    process.env.RAZORPAY_FOREIGN_CURRENCIES = 'EUR,USD'
+    const originalFetch = globalThis.fetch
+    resetFxRateCacheForTests()
+    globalThis.fetch = (async () => new Response(JSON.stringify([
+      { date: new Date().toISOString().slice(0, 10), base: 'USD', quote: 'EUR', rate: 0.92 },
+    ]), { status: 200, headers: { 'content-type': 'application/json' } })) as typeof fetch
     try {
-      const d = resolveGateway('DE', product, enabled)
-      expect(d.ok).toBeFalse()
-      if (!d.ok) expect(d.rejection).toBe('NO_FOREIGN_PRICE')
+      const d = await resolveGateway('DE', product, enabled)
+      expect(d).toEqual({ ok: true, gateway: 'razorpay', currency: 'EUR', amountMinor: 551 })
     } finally {
-      delete process.env.RAZORPAY_FOREIGN_CURRENCIES
+      globalThis.fetch = originalFetch
+      resetFxRateCacheForTests()
+      if (savedCurrencies === undefined) delete process.env.RAZORPAY_FOREIGN_CURRENCIES
+      else process.env.RAZORPAY_FOREIGN_CURRENCIES = savedCurrencies
     }
   })
 
-  test('missing USD price → friendly rejection (no conversion)', () => {
+  test('native FX failure falls back to USD when USD is enabled', async () => {
     enableInternational()
-    const d = resolveGateway('US', { ...product, priceUsd: 0 }, enabled)
+    const savedCurrencies = process.env.RAZORPAY_FOREIGN_CURRENCIES
+    const originalFetch = globalThis.fetch
+    process.env.RAZORPAY_FOREIGN_CURRENCIES = 'EUR,USD'
+    resetFxRateCacheForTests()
+    globalThis.fetch = (async () => { throw new Error('FX provider unavailable') }) as typeof fetch
+    try {
+      const d = await resolveGateway('DE', product, enabled)
+      expect(d).toEqual({ ok: true, gateway: 'razorpay', currency: 'USD', amountMinor: 599 })
+    } finally {
+      globalThis.fetch = originalFetch
+      resetFxRateCacheForTests()
+      if (savedCurrencies === undefined) delete process.env.RAZORPAY_FOREIGN_CURRENCIES
+      else process.env.RAZORPAY_FOREIGN_CURRENCIES = savedCurrencies
+    }
+  })
+
+  test('no merchant-enabled native or USD currency → NO_FOREIGN_PRICE', async () => {
+    enableInternational()
+    const savedCurrencies = process.env.RAZORPAY_FOREIGN_CURRENCIES
+    const originalFetch = globalThis.fetch
+    process.env.RAZORPAY_FOREIGN_CURRENCIES = 'EUR'
+    resetFxRateCacheForTests()
+    globalThis.fetch = (async () => { throw new Error('FX provider unavailable') }) as typeof fetch
+    try {
+      const d = await resolveGateway('DE', product, enabled)
+      expect(d.ok).toBeFalse()
+      if (!d.ok) expect(d.rejection).toBe('NO_FOREIGN_PRICE')
+    } finally {
+      globalThis.fetch = originalFetch
+      resetFxRateCacheForTests()
+      if (savedCurrencies === undefined) delete process.env.RAZORPAY_FOREIGN_CURRENCIES
+      else process.env.RAZORPAY_FOREIGN_CURRENCIES = savedCurrencies
+    }
+  })
+
+  test('missing USD price → friendly rejection when USD is selected', async () => {
+    enableInternational()
+    const d = await resolveGateway('US', { ...product, priceUsd: 0 }, enabled)
     expect(d.ok).toBeFalse()
     if (!d.ok) expect(d.rejection).toBe('NO_USD_PRICE')
   })
 
-  test('missing INR price for India → NO_INR_PRICE', () => {
-    const d = resolveGateway('IN', { ...product, priceInr: 0 }, enabled)
+  test('missing INR price for India → NO_INR_PRICE', async () => {
+    const d = await resolveGateway('IN', { ...product, priceInr: 0 }, enabled)
     expect(d.ok).toBeFalse()
     if (!d.ok) expect(d.rejection).toBe('NO_INR_PRICE')
   })
 
-  test('blocked country → COUNTRY_BLOCKED', () => {
+  test('blocked country → COUNTRY_BLOCKED', async () => {
     enableInternational()
     process.env.RAZORPAY_BLOCKED_COUNTRIES = 'PK'
     try {
-      const d = resolveGateway('PK', product, enabled)
+      const d = await resolveGateway('PK', product, enabled)
       expect(d.ok).toBeFalse()
       if (!d.ok) expect(d.rejection).toBe('COUNTRY_BLOCKED')
     } finally {
@@ -93,11 +140,11 @@ describe('resolveGateway', () => {
     }
   })
 
-  test('legacy PAYPAL_BLOCKED_COUNTRIES alias still blocks', () => {
+  test('legacy PAYPAL_BLOCKED_COUNTRIES alias still blocks', async () => {
     enableInternational()
     process.env.PAYPAL_BLOCKED_COUNTRIES = 'KP'
     try {
-      const d = resolveGateway('KP', product, enabled)
+      const d = await resolveGateway('KP', product, enabled)
       expect(d.ok).toBeFalse()
       if (!d.ok) expect(d.rejection).toBe('COUNTRY_BLOCKED')
     } finally {
@@ -105,21 +152,21 @@ describe('resolveGateway', () => {
     }
   })
 
-  test('disabled gateway → GATEWAY_DISABLED', () => {
+  test('disabled gateway → GATEWAY_DISABLED', async () => {
     enableInternational()
-    const d = resolveGateway('US', product, { razorpayEnabled: false })
+    const d = await resolveGateway('US', product, { razorpayEnabled: false })
     expect(d.ok).toBeFalse()
     if (!d.ok) expect(d.rejection).toBe('GATEWAY_DISABLED')
   })
 
-  test('instant download off → PRODUCT_NOT_INSTANT', () => {
-    const d = resolveGateway('US', { ...product, instantDownload: false }, enabled)
+  test('instant download off → PRODUCT_NOT_INSTANT', async () => {
+    const d = await resolveGateway('US', { ...product, instantDownload: false }, enabled)
     expect(d.ok).toBeFalse()
     if (!d.ok) expect(d.rejection).toBe('PRODUCT_NOT_INSTANT')
   })
 
-  test('null country → COUNTRY_BLOCKED (ask for confirmation, never guess)', () => {
-    const d = resolveGateway(null, product, enabled)
+  test('null country → COUNTRY_BLOCKED (ask for confirmation, never guess)', async () => {
+    const d = await resolveGateway(null, product, enabled)
     expect(d.ok).toBeFalse()
     if (!d.ok) expect(d.rejection).toBe('COUNTRY_BLOCKED')
   })
@@ -133,6 +180,27 @@ describe('resolveGateway', () => {
     expect(internationalCheckoutEnabled()).toBeFalse()
     delete process.env.INTERNATIONAL_CHECKOUT_ENABLED
     expect(internationalCheckoutEnabled()).toBeFalse()
+  })
+})
+
+describe('country to native currency mapping', () => {
+  test('maps common countries to their ISO-4217 currency', () => {
+    expect(currencyForCountryCode('IN')).toBe('INR')
+    expect(currencyForCountryCode('GB')).toBe('GBP')
+    expect(currencyForCountryCode('DE')).toBe('EUR')
+    expect(currencyForCountryCode('JP')).toBe('JPY')
+    expect(currencyForCountryCode('PL')).toBe('PLN')
+    expect(currencyForCountryCode('US')).toBe('USD')
+    expect(currencyForCountryCode('ZZ')).toBeNull()
+  })
+})
+
+describe('Razorpay currency allowlist', () => {
+  test('recognises published currency codes and refuses unknown currencies', () => {
+    expect(isRazorpaySupportedCurrency('EUR')).toBeTrue()
+    expect(isRazorpaySupportedCurrency('JPY')).toBeTrue()
+    expect(isRazorpaySupportedCurrency('AFN')).toBeFalse()
+    expect(isRazorpaySupportedCurrency('XYZ')).toBeFalse()
   })
 })
 
@@ -164,16 +232,19 @@ describe('money helpers', () => {
     expect(currencyExponentFactor('JPY')).toBe(1)
     expect(toCurrencyMinor(499, 'JPY')).toBe(499)
     expect(currencyExponentFactor('KWD')).toBe(1000)
-    expect(toCurrencyMinor(5.995, 'KWD')).toBe(5995)
+    expect(toCurrencyMinor(5.995, 'KWD')).toBe(6000)
+    expect(toCurrencyMinor(99.991, 'KWD')).toBe(99990)
     expect(currencyExponentFactor('XYZ')).toBeNull()
     expect(toCurrencyMinor(10, 'XYZ')).toBeNull()
     expect(toCurrencyMinor(0, 'USD')).toBeNull()
     expect(toCurrencyMinor(Number.NaN, 'USD')).toBeNull()
   })
 
-  test('display formatting', () => {
+  test('display formatting respects zero-, two- and three-decimal currencies', () => {
     expect(formatMinor(49900, 'INR')).toBe('₹499')
     expect(formatMinor(599, 'USD')).toBe('$5.99')
+    expect(formatMinor(499, 'JPY')).toBe('¥499')
+    expect(formatMinor(5990, 'KWD')).toContain('5.99')
   })
 })
 

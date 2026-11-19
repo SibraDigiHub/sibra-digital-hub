@@ -7,6 +7,7 @@
 // ═══════════════════════════════════════════════════════════
 
 import { adminFetch } from '@/lib/admin-api'
+import { formatMajorCurrency, formatOrderAmount } from '@/lib/order-money'
 import { useEffect, useState } from 'react'
 import { Activity, AlertTriangle, Download, Plus, ReceiptText, Settings as SettingsIcon, Users } from 'lucide-react'
 
@@ -43,6 +44,7 @@ interface AdminStats {
   revenueUsdMinor: number
   revenueUsdTodayMinor: number
   revenueUsd30dMinor: number
+  revenueByCurrency: { currency: string; amount: number }[]
   usdPaidOrderCount: number
   averageOrderValueInr: number
   failedEmailCount: number
@@ -181,6 +183,15 @@ export default function AdminDashboard({ onNavigate, onUnauthenticated }: AdminD
             <StatCard emoji="👥" label="Customers" value={String(stats.customerCount)} accent="#00F0FF" />
             <StatCard emoji="👀" label="Views 24h" value={String(stats.views24h)} accent="#9AA89E" />
           </div>
+          {stats.revenueByCurrency?.some((item) => item.currency !== 'INR' && item.currency !== 'USD') && (
+            <p className="text-xs text-[#9AA89E]">
+              Other currency revenue:{' '}
+              {stats.revenueByCurrency
+                .filter((item) => item.currency !== 'INR' && item.currency !== 'USD')
+                .map((item) => formatMajorCurrency(item.amount, item.currency))
+                .join(' · ')}
+            </p>
+          )}
 
           {/* Chips row */}
           <div className="flex flex-wrap items-center gap-2">
@@ -314,7 +325,7 @@ export default function AdminDashboard({ onNavigate, onUnauthenticated }: AdminD
                         </TableCell>
                         <TableCell className="max-w-[220px] truncate text-sm">{o.product?.title ?? '—'}</TableCell>
                         <TableCell className="whitespace-nowrap text-sm font-semibold text-[#E5B842]">
-                          ₹{o.amountInr.toLocaleString('en-IN')}
+                          {formatOrderAmount(o)}
                         </TableCell>
                         <TableCell>
                           <Badge variant="outline" className={STATUS_STYLES[o.status] ?? STATUS_STYLES.failed}>

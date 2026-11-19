@@ -260,6 +260,7 @@ interface DeliveryEmailInput {
   productTitle: string
   downloadUrl: string
   amountInr: number
+  amountDisplay?: string
   orderId: string
   // Layer 2 — verified-review invite (the buyer's own rate page). Optional:
   // when absent the email renders exactly as before.
@@ -286,6 +287,7 @@ interface WatchEmailInput {
   ttlHours: number
   maxConcurrent: number
   amountInr: number
+  amountDisplay?: string
   orderId: string
   // Layer 2 — verified-review invite (the buyer's own rate page). Optional:
   // when absent the email renders exactly as before.
@@ -303,7 +305,7 @@ export async function sendWatchDeliveryEmail(input: WatchEmailInput): Promise<Em
     </div>
     <div style="padding:28px;color:#3a3123">
       <p>Hi <strong>${customerName}</strong>,</p>
-      <p>Thanks for your purchase of <strong>${productTitle}</strong> (₹${Math.round(input.amountInr)}). Your protected watch link is below — access is valid for <strong>${input.ttlHours} hours</strong> from now, on up to <strong>${input.maxConcurrent} device${input.maxConcurrent === 1 ? '' : 's'} at the same time</strong>.</p>
+      <p>Thanks for your purchase of <strong>${productTitle}</strong> (${input.amountDisplay ?? `₹${Math.round(input.amountInr)}`}). Your protected watch link is below — access is valid for <strong>${input.ttlHours} hours</strong> from now, on up to <strong>${input.maxConcurrent} device${input.maxConcurrent === 1 ? '' : 's'} at the same time</strong>.</p>
       <p style="text-align:center;margin:26px 0">
         <a href="${input.watchUrl}" style="background:linear-gradient(120deg,#e5b842,#c9932a);color:#050706;font-weight:800;padding:14px 34px;border-radius:999px;text-decoration:none;display:inline-block">▶ Watch Now</a>
       </p>
@@ -340,7 +342,7 @@ export async function sendDeliveryEmail(input: DeliveryEmailInput): Promise<Emai
     </div>
     <div style="padding:28px;color:#3a3123">
       <p>Hi <strong>${customerName}</strong>,</p>
-      <p>Thanks for your purchase of <strong>${productTitle}</strong> (₹${Math.round(input.amountInr)}). Your secure download link is below — valid for <strong>${ttlHours} hours</strong> and <strong>${maxDownloads} downloads</strong>.</p>
+      <p>Thanks for your purchase of <strong>${productTitle}</strong> (${input.amountDisplay ?? `₹${Math.round(input.amountInr)}`}). Your secure download link is below — valid for <strong>${ttlHours} hours</strong> and <strong>${maxDownloads} downloads</strong>.</p>
       ${limitReached ? `<p style="font-size:13px;color:#8a7a5c">Your earlier link had reached its ${maxDownloads}-download limit. The store has issued this fresh link for you — it starts a new <strong>${maxDownloads}-download quota</strong>, and the old link no longer works. Please use only the button below.</p>` : ''}
       <p style="text-align:center;margin:26px 0">
         <a href="${input.downloadUrl}" style="background:linear-gradient(120deg,#e5b842,#c9932a);color:#050706;font-weight:800;padding:14px 34px;border-radius:999px;text-decoration:none;display:inline-block">⬇️ Download Now</a>

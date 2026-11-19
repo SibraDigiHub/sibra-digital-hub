@@ -32,6 +32,9 @@ function ZoneTable({
       <h3 className="font-cinzel text-sm uppercase tracking-widest text-[#E5B842]">
         {emoji} {heading}
       </h3>
+      <p className="mt-1 text-xs text-[#9AA89E]">
+        Base prices are shown below. International checkout may display a merchant-enabled local currency converted from the USD base price.
+      </p>
 
       {/* Desktop: real table */}
       <div className="mt-3 hidden overflow-x-auto rounded-2xl border border-[rgba(229,184,66,0.25)] md:block">
@@ -42,10 +45,10 @@ function ZoneTable({
                 Product
               </th>
               <th scope="col" className="px-4 py-3 font-bold text-[#FAE8A7]">
-                India (₹)
+                India base (₹)
               </th>
               <th scope="col" className="px-4 py-3 font-bold text-[#FAE8A7]">
-                International ($)
+                USD base ($)
               </th>
               <th scope="col" className="px-4 py-3 font-bold text-[#FAE8A7]">
                 <span className="sr-only">Open product</span>
@@ -97,8 +100,8 @@ function ZoneTable({
                 </button>
               </div>
               <div className="mt-2 flex items-baseline gap-3">
-                <span className="text-lg font-extrabold text-[#E67300]">{money.inr}</span>
-                <span className="text-xs font-semibold text-[#9AA89E]">{money.usd}</span>
+                <span className="text-lg font-extrabold text-[#E67300]">India: {money.inr}</span>
+                <span className="text-xs font-semibold text-[#9AA89E]">USD base: {money.usd}</span>
               </div>
             </div>
           )

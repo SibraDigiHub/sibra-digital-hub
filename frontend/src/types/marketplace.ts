@@ -222,6 +222,8 @@ export interface ReviewOrderContext {
   product: { title: string; slug: string; zone: Zone }
   customerName: string
   amountInr: number
+  currency?: string
+  amountMinor?: number | null
   review: { rating: number; text: string; status: ProductReviewStatus } | null
 }
 

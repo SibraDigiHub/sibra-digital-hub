@@ -6,8 +6,8 @@
 //
 //   India (server-detected) → Razorpay Standard Checkout (INR);
 //                             UPI demo QR in the key-less demo env.
-//   Everywhere else         → Razorpay Standard Checkout in the
-//                             configured foreign currency (flag on).
+//   International visitors   → Razorpay Standard Checkout in their
+//                             merchant-enabled native currency or USD fallback.
 //
 // Task 3: NO country selector — the SERVER detects the country from
 // the connection (platform geo header) and decides gateway/currency/
@@ -664,6 +664,11 @@ export function InstantDownloadDialog({
                       <span className="font-normal text-muted-foreground">
                         Total {quote.display} · {quote.currency}
                       </span>
+                      {quote.currency !== 'INR' && quote.currency !== 'USD' ? (
+                        <span className="mt-1 block text-[10px] font-normal text-muted-foreground">
+                          Daily reference conversion provided by Frankfurter. The final amount is fixed when your order is created.
+                        </span>
+                      ) : null}
                     </p>
                   )}
                   {!quoteLoading && quoteError && (

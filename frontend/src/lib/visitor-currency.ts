@@ -1,62 +1,33 @@
 'use client'
 
 import { useEffect, useState } from 'react'
+import { formatMajorCurrency } from '@/lib/order-money'
 
-// ═══════════════════════════════════════════════════════════
-// Visitor currency (Task 3 — no country selector, no FX).
-//
-// The server renders BOTH the USD and INR price twins everywhere
-// (cache-safe: no geo ever enters the cached HTML — crawlers and
-// unknown locations get USD per the owner decision). The visitor's
-// own variant resolves CLIENT-SIDE, immediately:
-//   1. `sdh_geo` cookie (set by /api/geo for a year) — read
-//      SYNCHRONOUSLY before first paint by the tiny inline script
-//      in the root layout, which sets <html data-currency>; CSS
-//      then shows exactly one price span — zero CLS, zero flash,
-//      zero extra requests for returning visitors.
-//   2. navigator.languages — any Indian region tag (`*-IN`) or
-//      Indian primary language (hi, bn, ta, te, mr, gu, kn, ml,
-//      pa, or, as, ur) ⇒ INR. This is the FIRST-VISIT signal: an
-//      Indian visitor's browser almost always carries one of these,
-//      so they see ₹ on the very first paint — no fetch, no cookie,
-//      no dependency on /api/geo being reachable.
-//   3. /api/geo (one async fetch) — refines via the platform's IP
-//      geo header (x-vercel-ip-country / cf-ipcountry) when the
-//      browser locale is ambiguous (e.g. an Indian on a US-English
-//      browser), and persists the cookie for next visit.
-// The SERVER always decides what is CHARGED (quote/create read the
-// geo header) — this module only picks which price is DISPLAYED.
-// ═══════════════════════════════════════════════════════════
+export type VisitorCurrency = string
 
-export type VisitorCurrency = 'INR' | 'USD'
+export interface VisitorCurrencyInfo {
+  country: string
+  currency: string
+  rate: number
+  rateUpdatedAt: number | null
+  rateSource: string | null
+}
 
-/** Server decides: India ⇒ INR, everything else ⇒ USD. */
+let resolvedInfo: VisitorCurrencyInfo | null = null
+let inflight: Promise<VisitorCurrencyInfo> | null = null
+
+/** Legacy country helper retained for callers that only know the India/USD split. */
 export function currencyForCountry(country: string | null | undefined): VisitorCurrency {
   return country === 'IN' ? 'INR' : 'USD'
 }
 
-/** Synchronous cookie read (mirrors the layout inline script). */
+/** Synchronous cookie read (fallback only; /api/geo is authoritative). */
 export function visitorCurrencyFromCookie(): VisitorCurrency | null {
   if (typeof document === 'undefined') return null
-  const m = document.cookie.match(/(?:^|;\s*)sdh_geo=([A-Z]{2})/)
-  if (!m) return null
-  return currencyForCountry(m[1])
+  const match = document.cookie.match(/(?:^|;\s*)sdh_geo=([A-Z]{2})/)
+  return match ? currencyForCountry(match[1]) : null
 }
 
-/**
- * Indian-language codes (primary subtag) used by `navigator.languages`
- * detection. Mirrors the inline script's regex in layout.tsx and the
- * backend `acceptLanguageHint` set in visitor-geo.ts — keep in sync.
- */
-const INDIAN_LANG_RE = /^(hi|bn|ta|te|mr|gu|kn|ml|pa|or|as|ur|sa)$/
-
-/**
- * The device's IANA timezone — the STRONGEST client location signal.
- * The OS clock timezone follows where the user actually lives (an Indian
- * device is set to Asia/Calcutta a.k.a. Asia/Kolkata regardless of the
- * browser UI language or any VPN). Only India is mapped: INR is the only
- * non-USD currency the store prices.
- */
 export function visitorTimezone(): string {
   try {
     return Intl.DateTimeFormat().resolvedOptions().timeZone || ''
@@ -65,107 +36,93 @@ export function visitorTimezone(): string {
   }
 }
 
-/** Timezone → country hint sent to the server (checkout charge parity). */
 export function timezoneCountryHint(timezone: string): string | null {
   const tz = timezone.trim().toLowerCase()
-  if (tz === 'asia/calcutta' || tz === 'asia/kolkata') return 'IN'
-  return null
+  return tz === 'asia/calcutta' || tz === 'asia/kolkata' ? 'IN' : null
 }
 
-/**
- * Synchronous timezone read — the TOP-priority client signal. Returns
- * 'INR' when the device timezone is Indian IST, else null. This runs
- * BEFORE the cookie check in the resolver: a stale `sdh_geo=US` cookie
- * (set long ago by a weak server fallback on this preview gateway) must
- * never pin an Indian device to dollars — the OS clock is the truth.
- */
 export function visitorCurrencyFromTimezone(): VisitorCurrency | null {
   return timezoneCountryHint(visitorTimezone()) === 'IN' ? 'INR' : null
 }
 
-/**
- * Synchronous navigator.languages read — a secondary client signal for
- * first visits. Returns 'INR' when the browser carries any Indian region
- * tag (`*-IN`) or Indian primary language, else null. No network request.
- */
+const INDIAN_LANG_RE = /^(hi|bn|ta|te|mr|gu|kn|ml|pa|or|as|ur|sa)$/
+
 export function visitorCurrencyFromNavigator(): VisitorCurrency | null {
   if (typeof navigator === 'undefined') return null
-  const langs = navigator.languages ?? (navigator.language ? [navigator.language] : [])
-  for (const l of langs) {
-    const parts = (l || '').toLowerCase().split('-')
-    if (parts[1] === 'in' || INDIAN_LANG_RE.test(parts[0])) return 'INR'
+  const languages = navigator.languages ?? (navigator.language ? [navigator.language] : [])
+  for (const language of languages) {
+    const [primary, region] = (language || '').toLowerCase().split('-')
+    if (region === 'in' || INDIAN_LANG_RE.test(primary)) return 'INR'
   }
   return null
 }
 
-/**
- * Headers carrying the client timezone so the SERVER can apply the same
- * hint when it decides the CHARGED currency (quote/create) — the server
- * uses it only as a last-resort hint, after its own platform geo header.
- * Mirrors backend `timezoneHint` in visitor-geo.ts.
- */
 export function clientTimezoneHeaders(): Record<string, string> {
-  const tz = visitorTimezone()
-  return tz ? { 'x-client-timezone': tz } : {}
+  const timezone = visitorTimezone()
+  return timezone ? { 'x-client-timezone': timezone } : {}
 }
 
-/** Persist the resolved country as the sdh_geo cookie (1-year, lax, same shape as /api/geo sets). */
+/** Store the server-resolved country for the next page's geo bootstrap. */
 function persistGeoCookie(country: string): void {
   if (typeof document === 'undefined') return
   document.cookie = `sdh_geo=${country};max-age=${365 * 24 * 3600};path=/;samesite=lax${location.protocol === 'https:' ? ';secure' : ''}`
 }
 
-/** Apply the currency to <html data-currency> — CSS shows one price span. */
 export function applyCurrencyToDom(currency: VisitorCurrency | null): void {
   if (typeof document === 'undefined') return
-  document.documentElement.dataset.currency = currency ?? 'USD'
+  if (currency) document.documentElement.dataset.currency = currency
+  else delete document.documentElement.dataset.currency
 }
 
-let inflight: Promise<VisitorCurrency> | null = null
-
-/**
- * Resolve the display currency from the server's current country detection.
- * The geo cookie is only an instant pre-paint hint; it must not override
- * the current IP-based country, especially when a visitor changes VPN.
- */
-export function resolveVisitorCurrency(): Promise<VisitorCurrency> {
+/** Fetch the server-authoritative country, merchant-enabled currency and FX rate. */
+export function resolveVisitorCurrencyInfo(): Promise<VisitorCurrencyInfo> {
   if (!inflight) {
     inflight = fetch('/api/geo', { cache: 'no-store', headers: clientTimezoneHeaders() })
-      .then((r) => (r.ok ? r.json() : {}))
-      .then((d: { country?: string }) => {
-        const currency = currencyForCountry(d?.country)
-        applyCurrencyToDom(currency)
-        return currency
+      .then(async (response) => {
+        if (!response.ok) throw new Error('geo_unavailable')
+        return (await response.json()) as Partial<VisitorCurrencyInfo>
+      })
+      .then((data) => {
+        const currency = typeof data.currency === 'string' && /^[A-Z]{3}$/.test(data.currency) ? data.currency : 'USD'
+        const reportedRate = Number.isFinite(data.rate) && Number(data.rate) > 0 ? Number(data.rate) : 1
+        const info: VisitorCurrencyInfo = {
+          country: typeof data.country === 'string' ? data.country : 'US',
+          currency,
+          rate: currency === 'USD' || currency === 'INR' ? 1 : reportedRate,
+          rateUpdatedAt: typeof data.rateUpdatedAt === 'number' ? data.rateUpdatedAt : null,
+          rateSource: typeof data.rateSource === 'string' ? data.rateSource : null,
+        }
+        resolvedInfo = info
+        persistGeoCookie(info.country)
+        applyCurrencyToDom(info.currency)
+        return info
       })
       .catch(() => {
-        const cookieCurrency = visitorCurrencyFromCookie() ?? 'USD'
-        applyCurrencyToDom(cookieCurrency)
-        return cookieCurrency
+        const info: VisitorCurrencyInfo = {
+          country: 'US',
+          currency: visitorCurrencyFromCookie() ?? 'USD',
+          rate: 1,
+          rateUpdatedAt: null,
+          rateSource: null,
+        }
+        resolvedInfo = info
+        applyCurrencyToDom(info.currency)
+        return info
       })
   }
   return inflight
 }
 
-// ── React hook (client components only) ─────────────────────
+export function resolveVisitorCurrency(): Promise<VisitorCurrency> {
+  return resolveVisitorCurrencyInfo().then((info) => info.currency)
+}
 
-/**
- * The visitor's display currency. ALWAYS starts `null` so the server
- * HTML and the client's first render are byte-identical (no hydration
- * mismatch — the cookie is NOT read during the initial render). The
- * pre-paint inline script + CSS already switch the VISIBLE price
- * before React mounts; this hook only feeds the currency-aware labels
- * and conditional buttons, which resolve once after mount.
- *
- * null until known — callers render price-free labels meanwhile (no
- * wrong-currency exposure, no flash; the visual price itself is
- * CSS-switched elsewhere).
- */
 export function useVisitorCurrency(): VisitorCurrency | null {
   const [currency, setCurrency] = useState<VisitorCurrency | null>(null)
   useEffect(() => {
     let live = true
-    void resolveVisitorCurrency().then((c) => {
-      if (live) setCurrency(c)
+    void resolveVisitorCurrency().then((value) => {
+      if (live) setCurrency(value)
     })
     return () => {
       live = false
@@ -174,20 +131,16 @@ export function useVisitorCurrency(): VisitorCurrency | null {
   return currency
 }
 
-/** Formatted single-currency price for one display currency. */
 export function formatVisitorPrice(currency: VisitorCurrency, priceUsd: number, priceInr: number): string {
-  return currency === 'INR' ? `₹${Math.round(priceInr)}` : `$${priceUsd.toFixed(2)}`
+  if (currency === 'INR') return formatMajorCurrency(priceInr, 'INR')
+  const rate = resolvedInfo?.currency === currency ? resolvedInfo.rate : 1
+  return formatMajorCurrency(priceUsd * rate, currency)
 }
 
-/**
- * aria-label price fragment: only the VISITOR-currency price — never the
- * other region's direct-buy price. Empty string while unknown (labels
- * render without a price until the currency resolves).
- */
 export function visitorPriceLabel(
   currency: VisitorCurrency | null,
   priceUsd: number,
   priceInr: number,
 ): string {
-  return currency ? formatVisitorPrice(currency, priceUsd, priceInr) : ''
+  return currency && resolvedInfo ? formatVisitorPrice(currency, priceUsd, priceInr) : ''
 }

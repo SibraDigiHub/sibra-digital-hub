@@ -19,12 +19,25 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { asHandler } from '@/lib/api'
 import { visitorCountrySync } from '@/services/visitor-geo'
+import { visitorCurrencyChoice } from '@/services/gateway-routing'
 
 export const dynamic = 'force-dynamic'
 
 export const GET = asHandler(async (req: NextRequest) => {
   const country = visitorCountrySync(req)
-  const res = NextResponse.json({ country, isIndia: country === 'IN' })
+  const choice = country === 'IN' ? { currency: 'INR', rate: 1, rateUpdatedAt: null } : await visitorCurrencyChoice(country)
+  // Display fallback mirrors checkout: native currency only when the
+  // merchant has enabled it and a usable FX rate is available; otherwise USD.
+  const currency = country === 'IN' ? 'INR' : (choice?.currency ?? 'USD')
+  const rate = country === 'IN' ? 1 : (choice?.rate ?? 1)
+  const res = NextResponse.json({
+    country,
+    isIndia: country === 'IN',
+    currency,
+    rate,
+    rateUpdatedAt: choice?.rateUpdatedAt ?? null,
+    rateSource: currency === 'INR' || currency === 'USD' ? null : 'Frankfurter',
+  })
   res.cookies.set('sdh_geo', country, {
     maxAge: 365 * 24 * 3600,
     sameSite: 'lax',

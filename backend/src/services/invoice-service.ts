@@ -3,8 +3,9 @@
 //
 // Design notes:
 //   • Currency of the invoice = currency the payment was ACTUALLY billed in
-//     (Order.currency: INR via Razorpay for India, USD via Razorpay where
-//     international checkout is enabled). amountMinor (paise/cents) is
+//     (Order.currency: INR in India, or merchant-enabled native currency /
+//     USD fallback for international checkout). amountMinor in the selected
+//     currency's minor units is
 //     authoritative; legacy rows without amountMinor fall back to amountInr
 //     (INR). Legacy PayPal rows keep their historical gateway reference.
 //   • The invoice reference is issued lazily on first download and then
@@ -23,6 +24,7 @@
 import { PDFDocument, StandardFonts, rgb, type PDFFont, type PDFPage } from 'pdf-lib'
 import { db } from '@/lib/db'
 import { invoiceGstin } from '@/config/env'
+import { currencyExponentFactor } from '@/lib/money'
 
 export const INVOICE_PREFIX = 'SDH'
 
@@ -90,16 +92,14 @@ const CURRENCY_SYMBOLS: Record<string, string> = {
   JPY: '¥',
 }
 
-/**
- * Format minor units (paise/cents) as a plain invoice money string in the
- * billed currency. Two decimals for every currency (matches the sample
- * invoice style; JPY zero-decimals is intentionally out of scope — the store
- * only bills INR/USD today).
- */
+/** Format the exact billed minor-unit snapshot with the currency's ISO exponent. */
 export function formatMoney(minor: number, currency: string): string {
+  const factor = currencyExponentFactor(currency)
+  if (factor === null) return `${currency} ${minor}`
+  const exponent = Math.round(Math.log10(factor))
   const safeMinor = Number.isFinite(minor) ? Math.round(minor) : 0
-  const major = safeMinor / 100
-  const amount = major.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+  const major = safeMinor / factor
+  const amount = major.toLocaleString('en-IN', { minimumFractionDigits: 0, maximumFractionDigits: exponent })
   const symbol = CURRENCY_SYMBOLS[currency]
   return symbol ? `${symbol}${amount}` : `${currency} ${amount}`
 }
