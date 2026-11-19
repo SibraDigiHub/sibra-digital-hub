@@ -37,6 +37,15 @@ export const productReviewRepo = {
     })
   },
 
+  /** Approved reviews for the homepage Wall of Love, newest first. */
+  listApprovedForWall(take = 50) {
+    return db.productReview.findMany({
+      where: { status: APPROVED },
+      orderBy: [{ createdAt: 'desc' }, { id: 'asc' }],
+      take,
+    })
+  },
+
   /** Avg + count of APPROVED reviews per product — batched for cards.
    *  Without ids: every product that has at least one approved review. */
   summaries(productIds?: string[]) {

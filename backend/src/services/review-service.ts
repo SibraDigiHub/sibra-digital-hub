@@ -171,6 +171,39 @@ export async function publicReviewsForSlug(slug: string): Promise<{
   }
 }
 
+/**
+ * Approved verified-purchase reviews for the homepage Wall of Love.
+ * Only reviews belonging to published products are exposed publicly.
+ */
+export async function publicWallReviews() {
+  const rows = await productReviewRepo.listApprovedForWall(50)
+  const productIds = [...new Set(rows.map((row) => row.productId))]
+  const products = productIds.length
+    ? await db.product.findMany({
+        where: { id: { in: productIds }, status: 'published' },
+        select: { id: true, title: true, zone: true },
+      })
+    : []
+  const byId = new Map(products.map((product) => [product.id, product]))
+
+  return rows.flatMap((row, index) => {
+    const product = byId.get(row.productId)
+    if (!product || !row.text.trim()) return []
+    return [{
+      id: row.id,
+      name: row.name,
+      role: product.title,
+      avatarEmoji: '⭐',
+      content: row.text,
+      rating: row.rating,
+      zone: product.zone === 'creator' ? 'creator' as const : 'kids' as const,
+      verified: true,
+      sortOrder: -1000 + index,
+      createdAt: row.createdAt.toISOString(),
+    }]
+  })
+}
+
 /** Card summaries keyed by productId (catalog grids). */
 export async function ratingSummaries(): Promise<Record<string, RatingSummary>> {
   const rows = await productReviewRepo.summaries()
