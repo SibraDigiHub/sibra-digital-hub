@@ -62,7 +62,7 @@ const schema = z.object({
    * false — foreign buyers get the friendly marketplace fallback until then.
    */
   INTERNATIONAL_CHECKOUT_ENABLED: bool,
-  /** Comma list of foreign currencies enabled for this merchant (admin-set prices; no conversion). */
+  /** Comma list of foreign currencies enabled for this Razorpay merchant account (include USD as fallback). */
   RAZORPAY_FOREIGN_CURRENCIES: z.string().optional(),
   /** Comma-separated ISO-3166 alpha-2 codes refused for direct checkout (PAYPAL_BLOCKED_COUNTRIES kept as a legacy alias). */
   RAZORPAY_BLOCKED_COUNTRIES: z.string().optional(),
@@ -484,8 +484,8 @@ export function razorpayBlockedCountries(): Set<string> {
 }
 
 /**
- * The foreign currencies the owner enabled for this merchant (default USD).
- * Prices are admin-set DB fields per currency — never conversions.
+ * Foreign currencies enabled for this merchant's Razorpay account.
+ * Default USD is the safe fallback; add only currencies activated in the Dashboard.
  */
 export function razorpayForeignCurrencies(): string[] {
   return (process.env.RAZORPAY_FOREIGN_CURRENCIES ?? 'USD')

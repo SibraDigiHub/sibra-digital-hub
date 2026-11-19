@@ -7,6 +7,7 @@
 // ═══════════════════════════════════════════════════════════
 
 import { adminFetch } from '@/lib/admin-api'
+import { formatOrderAmount } from '@/lib/order-money'
 import TablePagination, { TABLE_PAGE_SIZE } from '@/components/admin/TablePagination'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import {
@@ -348,7 +349,7 @@ export default function AdminCustomers() {
                             </Badge>
                           </div>
                           <p className="mt-1 text-xs text-[#9AA89E]">
-                            ₹{o.amountInr.toLocaleString('en-IN')} · {fmtDate(o.createdAt)} · {o.downloadCount} download(s)
+                            {formatOrderAmount(o)} · {fmtDate(o.createdAt)} · {o.downloadCount} download(s)
                           </p>
                         </li>
                       ))}

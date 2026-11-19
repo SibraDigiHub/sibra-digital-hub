@@ -18,7 +18,7 @@ export const analyticsRepo = {
   },
 
   paidAmounts() {
-    // currency/amountMinor join the row so USD revenue is grouped, never mixed into INR sums.
+    // currency/amountMinor join the row so every billed currency is grouped separately.
     return db.order.findMany({ where: { status: 'paid' }, select: { amountInr: true, currency: true, amountMinor: true, createdAt: true } })
   },
 
@@ -49,7 +49,7 @@ export const analyticsRepo = {
   paidOrdersWindow(since: Date) {
     return db.order.findMany({
       where: { status: 'paid', createdAt: { gte: since } },
-      select: { amountInr: true, createdAt: true, productId: true },
+      select: { amountInr: true, currency: true, amountMinor: true, createdAt: true, productId: true },
     })
   },
 

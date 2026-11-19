@@ -17,6 +17,7 @@ import { logEvent } from '@/lib/activity'
 import { writeAudit, maskEmail } from '@/lib/audit'
 import { mintGrantForOrder } from '@/services/watch-service'
 import { db } from '@/lib/db'
+import { formatMinor, orderExpectedMinor } from '@/lib/money'
 
 export const createOrderSchema = z.object({
   productId: z.string().min(1),
@@ -354,6 +355,7 @@ export async function fulfillOrder(
         ttlHours: winner.product.watchTtlHours ?? downloadTtlHours(),
         maxConcurrent: winner.product.watchMaxConcurrent ?? 2,
         amountInr: winner.amountInr,
+        amountDisplay: formatMinor(orderExpectedMinor(winner), winner.currency),
         orderId: winner.id,
         // Layer 2: the buyer's verified-review invite (same token, rate page).
         rateUrl: `${siteUrl}/#/rate/${plain}`,
@@ -366,6 +368,7 @@ export async function fulfillOrder(
         // claims via POST — email prefetchers can't eat download slots.
         downloadUrl: `${siteUrl}/#/download/${plain}`,
         amountInr: winner.amountInr,
+        amountDisplay: formatMinor(orderExpectedMinor(winner), winner.currency),
         orderId: winner.id,
         // Layer 2: the buyer's verified-review invite (same token, rate page).
         rateUrl: `${siteUrl}/#/rate/${plain}`,

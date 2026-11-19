@@ -19,6 +19,7 @@ import { useAppStore } from '@/store/app-store'
 import { playFx } from '@/lib/sound-fx'
 import { cn } from '@/lib/utils'
 import type { ReviewOrderContext } from '@/types/marketplace'
+import { formatMinorCurrency } from '@/lib/order-money'
 
 type State =
   | { kind: 'loading' }
@@ -167,7 +168,7 @@ export default function RateReviewView() {
             </div>
             <h1 className="font-cinzel text-xl text-[#fae8a7] md:text-2xl">How was your download?</h1>
             <p className="mt-2 text-sm text-[#9aa89e]">
-              <span className="font-semibold text-[#f5f8f6]">{ctx.product.title}</span> · ₹{Math.round(ctx.amountInr)}
+              <span className="font-semibold text-[#f5f8f6]">{ctx.product.title}</span> · {ctx.amountMinor != null ? formatMinorCurrency(ctx.amountMinor, ctx.currency ?? 'INR') : `₹${Math.round(ctx.amountInr)}`}
             </p>
             <p className="mt-1 text-xs text-[#9aa89e]">
               ✅ Verified purchase — only real buyers can review, and every review is checked before it goes live.

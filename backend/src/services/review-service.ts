@@ -20,6 +20,8 @@ export interface ReviewContextDTO {
   product: { title: string; slug: string; zone: string }
   customerName: string
   amountInr: number
+  currency: string
+  amountMinor: number | null
   review: { rating: number; text: string; status: string } | null
 }
 
@@ -80,6 +82,8 @@ interface ReviewableOrder {
   status: string
   customerName: string
   amountInr: number
+  currency: string
+  amountMinor: number | null
   product: { title: string; slug: string; zone: string }
 }
 
@@ -93,6 +97,8 @@ async function reviewableOrder(token: string): Promise<ReviewableOrder> {
       status: true,
       customerName: true,
       amountInr: true,
+      currency: true,
+      amountMinor: true,
       createdAt: true,
       product: { select: { title: true, slug: true, zone: true } },
     },
@@ -115,6 +121,8 @@ export async function reviewContext(token: string): Promise<ReviewContextDTO> {
     product: order.product,
     customerName: order.customerName,
     amountInr: order.amountInr,
+    currency: order.currency,
+    amountMinor: order.amountMinor,
     review: existing ? { rating: existing.rating, text: existing.text, status: existing.status } : null,
   }
 }

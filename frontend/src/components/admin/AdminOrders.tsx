@@ -6,6 +6,7 @@
 // ═══════════════════════════════════════════════════════════
 
 import { adminFetch } from '@/lib/admin-api'
+import { formatOrderAmount } from '@/lib/order-money'
 import OrderWatchPanel from '@/components/admin/OrderWatchPanel'
 import TablePagination, { TABLE_PAGE_SIZE } from '@/components/admin/TablePagination'
 import { useCallback, useEffect, useState } from 'react'
@@ -260,7 +261,7 @@ export default function AdminOrders() {
 
   function exportCsv() {
     try {
-      const header = ['orderId', 'date', 'customer', 'email', 'product', 'amountInr', 'status', 'downloads', 'emailSent']
+      const header = ['orderId', 'date', 'customer', 'email', 'product', 'amount', 'currency', 'amountMinor', 'amountInrBase', 'status', 'downloads', 'emailSent']
       const esc = (v: unknown) => {
         const s = String(v ?? '')
         return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s
@@ -268,7 +269,7 @@ export default function AdminOrders() {
       const lines = [header.join(',')]
       for (const o of orders) {
         lines.push(
-          [o.id, o.createdAt, o.customerName, o.customerEmail, o.product?.title ?? '', o.amountInr, o.status, o.downloadCount, o.emailSent]
+          [o.id, o.createdAt, o.customerName, o.customerEmail, o.product?.title ?? '', formatOrderAmount(o), o.currency ?? 'INR', o.amountMinor ?? '', o.amountInr, o.status, o.downloadCount, o.emailSent]
             .map(esc)
             .join(','),
         )
@@ -401,9 +402,7 @@ export default function AdminOrders() {
                       )}
                     </TableCell>
                     <TableCell className="whitespace-nowrap text-sm font-semibold text-[#E5B842]">
-                      {o.currency === 'USD'
-                        ? `$${((o.amountMinor ?? 0) / 100).toFixed(2)}`
-                        : `₹${o.amountInr.toLocaleString('en-IN')}`}
+                      {formatOrderAmount(o)}
                     </TableCell>
                     <TableCell>
                       <Badge variant="outline" className={STATUS_STYLES[o.status] ?? STATUS_STYLES.failed}>
@@ -551,9 +550,7 @@ export default function AdminOrders() {
           <AlertDialogHeader>
             <AlertDialogTitle>Mark order refunded?</AlertDialogTitle>
             <AlertDialogDescription>
-              {refundTarget?.currency === 'USD' && refundTarget?.amountMinor
-                ? `$${(refundTarget.amountMinor / 100).toFixed(2)}`
-                : `₹${refundTarget?.amountInr.toLocaleString('en-IN')}`}{' '}
+              {refundTarget ? formatOrderAmount(refundTarget) : '—'}{' '}
               — {refundTarget?.customerEmail}. The order is marked refunded and download access is revoked immediately
               {refundTarget?.customerName ? ` (${refundTarget.customerName})` : ''}. Process the actual money in your{' '}
               {refundTarget?.gateway === 'paypal' ? 'PayPal' : 'Razorpay'} dashboard.
@@ -604,7 +601,7 @@ export default function AdminOrders() {
 
                 <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
                   {[
-                    { label: 'Amount', value: `₹${detail.order.amountInr.toLocaleString('en-IN')}` },
+                    { label: 'Amount', value: formatOrderAmount(detail.order) },
                     { label: 'Status', value: detail.order.status },
                     { label: 'Downloads', value: String(detail.order.downloadCount) },
                     { label: 'Placed', value: fmtDate(detail.order.createdAt) },

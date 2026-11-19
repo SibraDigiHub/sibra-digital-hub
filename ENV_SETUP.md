@@ -120,13 +120,15 @@ openssl rand -hex 15        # → RAZORPAY_WEBHOOK_SECRET (dashboard webhook + e
 | Variable | LOCAL value | PRODUCTION value | Agar ulta kiya to |
 |---|---|---|---|
 | `INTERNATIONAL_CHECKOUT_ENABLED` | `"false"` | `"false"` (jab tak Razorpay International activation na ho) | `true` bina activation: checkout dikhega par payment decline |
-| `RAZORPAY_FOREIGN_CURRENCIES` | `"USD"` | `"USD"` | Comma-list (jaise `USD,EUR`) — har currency ki price admin mein set karni padti |
+| `RAZORPAY_FOREIGN_CURRENCIES` | `"USD"` | `"USD"` | Merchant account mein enabled currencies ki allowlist (jaise `USD,EUR,GBP`); USD fallback rakhein. Foreign prices `priceUsd` se daily Frankfurter reference rate par convert hoti hain. |
 | `RAZORPAY_BLOCKED_COUNTRIES` | `""` | `""` | Country codes comma-se (jaise `PK,IR`) — un countries se checkout block |
 | `ALLOW_REPEAT_PURCHASE` | `"false"` | `"false"` | `true` = customer same product dobara khareed sakta hai |
 | `REVOKE_ON_REFUND` | `"true"` | `"true"` | `false` = refund ke baad bhi download access chalu — **kabhi mat karna** |
 | `RAZORPAY_ENABLED` | `"true"` | `"true"` | `false` = poora gateway off (emergency kill switch) |
 | `DOWNLOAD_TTL_HOURS` | `"48"` | `"48"` | Download link validity ghanto mein |
 | `DOWNLOAD_MAX_DEFAULT` | `"5"` | `"5"` | Max downloads per order |
+
+**Currency conversion note:** Frankfurter reference rates are fetched server-side and cached; no FX API key is required. These are daily reference/mid-market rates, not card-network quotes. If a country's native currency is not enabled for this Razorpay merchant, or its FX rate is unavailable, checkout/display falls back to USD (provided USD is enabled). `RAZORPAY_FOREIGN_CURRENCIES` must contain only codes activated for this specific Razorpay account, and should normally include `USD`.
 
 ### Group J — Danger variables (PROD mein KABHI set mat karna)
 
@@ -390,7 +392,7 @@ Live mode mein koi fake instrument nahi — **real paisa** lagta hai.
 
 Jab Razorpay se **International Payments activation** confirm ho jaye:
 - Backend env mein `INTERNATIONAL_CHECKOUT_ENABLED="true"` set karo → redeploy
-- Admin console mein har product ki USD price set karo (per-currency prices, conversion automatic nahi hota)
+- Admin console mein product ki USD base price set karo; international native-currency prices daily cached Frankfurter reference rate se calculate hoti hain. Razorpay account mein enabled currency codes ko `RAZORPAY_FOREIGN_CURRENCIES` mein list karo.
 
 ---
 

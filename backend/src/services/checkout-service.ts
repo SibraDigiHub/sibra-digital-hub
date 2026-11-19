@@ -67,7 +67,7 @@ export interface QuoteResult {
 /** §5.1 quote — the exact total before paying. Creates nothing. */
 export async function quoteCheckout(productId: string, country: string): Promise<QuoteResult> {
   const product = await productForCheckout(productId)
-  const decision = resolveGateway(country, product, gatewayConfigFromEnv())
+  const decision = await resolveGateway(country, product, gatewayConfigFromEnv())
   if (!decision.ok) throw new ApiError(422, decision.message, decision.rejection)
   return {
     gateway: decision.gateway,
@@ -308,7 +308,7 @@ export async function createCheckout(
   if (!country) throw new ApiError(422, 'Could not detect your billing country — please use a marketplace button below.', 'BAD_COUNTRY')
 
   const product = await productForCheckout(input.productId)
-  const decision = resolveGateway(country, product, gatewayConfigFromEnv())
+  const decision = await resolveGateway(country, product, gatewayConfigFromEnv())
   if (!decision.ok) throw new ApiError(422, decision.message, decision.rejection)
 
   const email = input.customerEmail.toLowerCase()

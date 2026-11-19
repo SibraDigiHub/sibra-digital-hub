@@ -18,13 +18,12 @@ import confetti from 'canvas-confetti'
 import { useAppStore } from '@/store/app-store'
 import type { Product } from '@/types/marketplace'
 import { platformMeta } from '@/lib/platforms'
-import { useVisitorCurrency, visitorPriceLabel, type VisitorCurrency } from '@/lib/visitor-currency'
+import { useVisitorCurrency, visitorPriceLabel, resolveVisitorCurrencyInfo, type VisitorCurrency } from '@/lib/visitor-currency'
 import { VisitorPrice } from '@/components/shop/VisitorPrice'
 import { playFx } from '@/lib/sound-fx'
 import { useToast } from '@/hooks/use-toast'
 import { cn } from '@/lib/utils'
 import { track } from '@/lib/track'
-import { clientTimezoneHeaders } from '@/lib/visitor-currency'
 import { InstantDownloadDialog } from '@/components/checkout/InstantDownloadDialog'
 
 // ── Geo cache: one /api/geo fetch per browser session ──────
@@ -40,24 +39,14 @@ export function getGeo(): Promise<boolean> {
     return Promise.resolve(stored)
   }
   if (!geoInflight) {
-    geoInflight = fetch('/api/geo', { cache: 'no-store', headers: clientTimezoneHeaders() })
-      .then((r) => (r.ok ? r.json() : {}))
-      .then((d: { isIndia?: boolean }) => {
-        // Task 3: the backend now honours our x-client-timezone header, so a
-        // healthy response already carries the timezone-derived answer. This
-        // fallback only covers a degenerate response: keep the device-timezone
-        // answer instead of a blind server guess (India-first audience).
-        if (typeof d.isIndia === 'boolean') {
-          geoCache = d.isIndia
-        } else {
-          const tz = clientTimezoneHeaders()['x-client-timezone'] ?? ''
-          geoCache = /^asia\/(calcutta|kolkata)$/i.test(tz) || !tz ? true : false
-        }
+    geoInflight = resolveVisitorCurrencyInfo()
+      .then((info) => {
+        geoCache = info.country === 'IN'
         useAppStore.getState().setIsIndia(geoCache)
         return geoCache
       })
       .catch(() => {
-        geoCache = true // primary audience — assume India on failure
+        geoCache = true // primary audience — preserve the existing India-first fallback
         return geoCache
       })
   }
@@ -106,7 +95,7 @@ export function CheckoutButtons({
   // Never show a direct-buy price for a region whose price is missing —
   // the instant dialog would just answer the marketplace-hint error.
   const regionPriceMissing =
-    (currency === 'INR' && !(product.priceInr > 0)) || (currency === 'USD' && !(product.priceUsd > 0))
+    currency !== null && (currency === 'INR' ? !(product.priceInr > 0) : !(product.priceUsd > 0))
   const instantAvailable = product.instantDownload && !regionPriceMissing
 
   useEffect(() => {
@@ -217,7 +206,7 @@ export function CheckoutButtons({
           >
             <span className="relative z-10 truncate">🇮🇳 Instant Checkout (UPI)</span>
           </button>
-        ) : product.internationalLink && (currency === null || currency === 'USD') ? (
+        ) : product.internationalLink && currency !== 'INR' ? (
           <button
             type="button"
             disabled={pending === 'intl'}
@@ -268,7 +257,7 @@ export function CheckoutButtons({
 
   return (
     <div className={cn('w-full', compact ? 'flex flex-col gap-2' : 'flex flex-col gap-3')}>
-      {(instantAvailable || (product.indiaLink && (currency === null || currency === 'INR')) || (product.internationalLink && (currency === null || currency === 'USD'))) && (
+      {(instantAvailable || (product.indiaLink && (currency === null || currency === 'INR')) || (product.internationalLink && currency !== 'INR')) && (
         <div className={cn('flex gap-3', compact ? 'flex-col' : 'flex-col md:flex-row md:items-stretch')}>
           {instantAvailable && (
             <button
@@ -330,7 +319,7 @@ export function CheckoutButtons({
             </button>
           )}
 
-          {product.internationalLink && (currency === null || currency === 'USD') && (
+          {product.internationalLink && currency !== 'INR' && (
             <button
               type="button"
               disabled={pending === 'intl'}
