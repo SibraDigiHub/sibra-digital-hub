@@ -10,7 +10,7 @@ export function currencyExponent(currency: string): number {
   const code = currency.toUpperCase()
   if (THREE_DECIMAL_CURRENCIES.has(code)) return 3
   if (ZERO_DECIMAL_CURRENCIES.has(code)) return 0
-  return new Intl.NumberFormat('en', { style: 'currency', currency: code }).resolvedOptions().maximumFractionDigits
+  return new Intl.NumberFormat('en', { style: 'currency', currency: code }).resolvedOptions().maximumFractionDigits ?? 2
 }
 
 export function currencyDisplayDigits(currency: string): number {
