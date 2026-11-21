@@ -80,7 +80,7 @@ export default function FAQAccordion() {
     let alive = true
     async function load() {
       try {
-        const res = await fetch('/api/faqs', { cache: 'no-store' })
+        const res = await fetch('/api/faqs')
         if (!res.ok) throw new Error(`HTTP ${res.status}`)
         const data = (await res.json()) as { faqs?: unknown }
         const raw = Array.isArray(data.faqs) ? data.faqs : []

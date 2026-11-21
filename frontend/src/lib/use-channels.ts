@@ -20,7 +20,7 @@ export async function fetchChannels(zone: Zone): Promise<Channel[]> {
   if (hit && Date.now() - hit.at < CACHE_TTL_MS) return hit.channels
   const pending = inflight.get(zone)
   if (pending) return pending
-  const p = fetch(`/api/channels?zone=${zone}`, { cache: 'no-store' })
+  const p = fetch(`/api/channels?zone=${zone}`)
     .then((r) => (r.ok ? r.json() : { channels: [] }))
     .then((d: { channels?: Channel[] }) => {
       const channels = Array.isArray(d.channels) ? d.channels : []
