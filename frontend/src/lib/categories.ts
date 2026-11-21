@@ -62,7 +62,7 @@ const toMeta = (r: CategoryApiRow): CategoryMeta => ({
 let inflight: Promise<void> | null = null
 
 async function fetchAndInstall(): Promise<void> {
-  const res = await fetch('/api/categories', { cache: 'no-store' })
+  const res = await fetch('/api/categories')
   if (!res.ok) throw new Error(`categories ${res.status}`)
   const data = (await res.json().catch(() => null)) as { categories?: CategoryApiRow[] } | null
   const rows = data?.categories ?? []

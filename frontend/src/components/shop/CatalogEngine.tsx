@@ -150,7 +150,7 @@ export function CatalogEngine({ initial }: { initial?: CatalogInitialData }) {
     const ac = new AbortController()
 
     const loadRatings = () => {
-      fetch('/api/reviews/product/summary', { cache: 'no-store', signal: ac.signal })
+      fetch('/api/reviews/product/summary', { signal: ac.signal })
         .then((r) => (r.ok ? (r.json() as Promise<{ ratings?: Record<string, RatingSummary> }>) : null))
         .then((d) => {
           if (d?.ratings) setRatings(d.ratings)

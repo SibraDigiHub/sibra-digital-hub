@@ -70,13 +70,27 @@ function baseOg(product: Product | null, title: string, description: string, pat
 
 // ── Per-page metadata ────────────────────────────────────────
 
+// Dynamic fallback for FUTURE products: agar admin ne description likhi
+// hi nahi, to meta/OG description REAL catalog fields se auto-compose
+// hota hain (zone noun, page count, formats, brand) — kuch bhi invent
+// nahi hota, isliye har auto-created product page SEO-complete hota hain.
+function autoDescription(product: Product): string {
+  const fmts: string[] = Array.isArray(product.fileFormats) ? product.fileFormats.filter(Boolean) : []
+  const noun = product.zone === 'creator' ? 'premium creator asset' : 'printable kids activity'
+  const parts = [
+    product.title,
+    noun,
+    product.pageCount ? `${product.pageCount} pages` : null,
+    fmts.length > 0 ? fmts.join(' + ') : null,
+    `by ${product.authorBrand}`,
+  ].filter((p): p is string => Boolean(p))
+  return `Instant digital download — ${parts.join(' · ')}.`
+}
+
 export function productMetadata(product: Product): Metadata {
   const path = realProductPath(product.slug)
   const title = clamp(product.title, 60)
-  const description = clamp(
-    product.description || `Instant digital download — ${product.title} by ${product.authorBrand}.`,
-    155,
-  )
+  const description = clamp(product.description || autoDescription(product), 155)
   return {
     title,
     description,
