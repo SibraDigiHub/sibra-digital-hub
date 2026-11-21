@@ -44,7 +44,7 @@ export function ProductReviews({ slug, isKids }: { slug: string; isKids: boolean
       try {
         const res = await fetch(
           `/api/reviews/product?slug=${encodeURIComponent(slug)}`,
-          { cache: 'no-store', signal: controller.signal },
+          { signal: controller.signal },
         )
         if (!res.ok) return
         const data = (await res.json()) as { summary?: RatingSummary; reviews?: PublicProductReview[] }

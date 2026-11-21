@@ -109,7 +109,7 @@ export default function ReviewsCarousel() {
     let alive = true
     async function load() {
       try {
-        const res = await fetch('/api/reviews', { cache: 'no-store' })
+        const res = await fetch('/api/reviews')
         if (!res.ok) throw new Error(`HTTP ${res.status}`)
         const data = (await res.json()) as { reviews?: unknown }
         const raw = Array.isArray(data.reviews) ? data.reviews : []

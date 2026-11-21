@@ -118,7 +118,7 @@ export default function LegalPriceList() {
 
   useEffect(() => {
     let alive = true
-    fetch('/api/products?status=active&limit=100', { cache: 'no-store' })
+    fetch('/api/products?status=active&limit=100')
       .then((r) => (r.ok ? r.json() : Promise.reject(new Error('bad status'))))
       .then((data: { products?: Product[] } | null) => {
         if (!alive) return

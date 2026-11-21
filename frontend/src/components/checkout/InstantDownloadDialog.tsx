@@ -21,7 +21,8 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react'
 import confetti from 'canvas-confetti'
-import QRCode from 'qrcode'
+// `qrcode` is lazy-imported at the UPI step below — the checkout bundle
+// should not carry the QR encoder for every product page load.
 import { motion } from 'framer-motion'
 import { Check, Copy, Loader2 } from 'lucide-react'
 import type { Product } from '@/types/marketplace'
@@ -251,7 +252,8 @@ export function InstantDownloadDialog({
     if (step !== 'upi' || !upiId) return
     let live = true
     const upiString = `upi://pay?pa=${upiId}&pn=${encodeURIComponent(upiPayeeName)}&am=${amountInr}&cu=INR&tn=${encodeURIComponent(`SDH ${product.slug}`)}`
-    void QRCode.toDataURL(upiString, { width: 220, margin: 1 })
+    void import('qrcode')
+      .then(({ default: QRCode }) => QRCode.toDataURL(upiString, { width: 220, margin: 1 }))
       .then((url) => {
         if (live) setQrUrl(url)
       })

@@ -76,6 +76,15 @@ ${categoryLines}
 
 ${productLines}
 
+## Product format and fulfilment facts
+
+- Kids' printables (coloring books, activity & puzzle packs, story e-books, ABCD & number tracing sheets, flashcards) ship as 300 DPI print-ready PDF interiors with 600 DPI digital cover files.
+- Creator-hub assets ship in the format listed on each product page: Canva template frameworks, structural AI prompt packs, production video scripts, ATS-compliant resume documents, and Next.js/PostgreSQL web application source code.
+- Every order is an automated instant download: the download link is emailed the moment payment is captured — no shipping, no waiting period.
+- Checkout runs on Razorpay and PayPal: UPI, cards, net banking and wallets for India; international cards and PayPal worldwide.
+- Prices: India uses INR base prices; international checkout uses USD base prices (or a merchant-enabled local currency converted from the USD base price).
+- Platform infrastructure: custom Next.js + Tailwind CSS frontend, PostgreSQL database, ImageKit CDN for image assets.
+
 ## Support and policies
 
 ${legalLines}
