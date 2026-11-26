@@ -23,6 +23,8 @@ export type PlatformId =
 export interface PlatformLink {
   platform: PlatformId
   url: string
+  /** Admin-defined button name ('custom' platform only; falls back to the default label). */
+  label?: string
 }
 
 export interface SpatialCoords {

@@ -29,6 +29,7 @@ import { playFx } from '@/lib/sound-fx'
 import VideoPlayerFrame from '@/components/shop/VideoPlayerFrame'
 import { ProductReviews } from '@/components/shop/ProductReviews'
 import { productMediaImages, imgFallbackToHq } from '@/lib/video-thumb'
+import { detailMainUrl, detailThumbUrl } from '@/lib/image-url'
 import { jsonLdString } from '@/lib/json-ld'
 import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
@@ -60,10 +61,10 @@ function DetailSkeleton() {
   return (
     <div className="grid gap-8 lg:grid-cols-2">
       <div className="space-y-3">
-        <Skeleton className="aspect-[4/3] w-full rounded-[24px]" />
+        <Skeleton className="aspect-[3/4] w-full rounded-[24px]" />
         <div className="flex gap-2">
           {Array.from({ length: 3 }).map((_, i) => (
-            <Skeleton key={i} className="size-16 rounded-xl" />
+            <Skeleton key={i} className="aspect-[3/4] w-16 rounded-xl" />
           ))}
         </div>
       </div>
@@ -402,19 +403,22 @@ export function ProductDetailView({
                       className="h-full w-full"
                     />
                   ) : (
-                    <div className="relative aspect-[4/3] w-full">
-                      {images.map((src, i) => (
-                        <img
-                          key={`${src}-${i}`}
-                          src={src}
-                          alt={`${product.title} — image ${i + 1} of ${images.length}`}
-                          onError={imgFallbackToHq}
-                          className={cn(
-                            'absolute inset-0 h-full w-full object-cover transition-all duration-500',
-                            i === activeImg ? 'scale-100 opacity-100' : 'scale-[1.04] opacity-0',
-                          )}
-                        />
-                      ))}
+                    <div className="relative aspect-[3/4] w-full">
+                      {/* ONLY the active gallery image is mounted — every
+                          unviewed image stays unbought (zero CDN waste).
+                          object-contain + the 3:4 frame fit ANY source
+                          ratio (3:4, 1:1, 16:9) without cropping; the
+                          width-only ImageKit transform keeps the original
+                          aspect ratio intact. */}
+                      <img
+                        key={activeImg}
+                        src={detailMainUrl(images[activeImg] ?? images[0])}
+                        alt={`${product.title} — image ${activeImg + 1} of ${images.length}`}
+                        loading={activeImg === 0 ? 'eager' : 'lazy'}
+                        decoding="async"
+                        onError={imgFallbackToHq}
+                        className="gallery-fade absolute inset-0 h-full w-full bg-card object-contain"
+                      />
                       {/* glass sheen for a premium finish */}
                       <span
                         aria-hidden="true"
@@ -453,7 +457,7 @@ export function ProductDetailView({
                   aria-label={`Show image ${i + 1} of ${images.length}`}
                   aria-pressed={i === activeImg}
                   className={cn(
-                    'relative size-16 shrink-0 overflow-hidden rounded-2xl p-[2px] transition-all duration-300 md:size-[72px]',
+                    'relative aspect-[3/4] w-16 shrink-0 overflow-hidden rounded-2xl p-[2px] transition-all duration-300 md:w-[72px]',
                     i === activeImg
                       ? isKids
                         ? 'bg-[linear-gradient(135deg,#FFB347,#FF8A3D)] shadow-[0_6px_18px_rgba(255,136,0,0.35)]'
@@ -462,10 +466,12 @@ export function ProductDetailView({
                   )}
                 >
                   <img
-                    src={src}
+                    src={detailThumbUrl(src)}
                     alt=""
+                    loading="lazy"
+                    decoding="async"
                     onError={imgFallbackToHq}
-                    className="h-full w-full rounded-[14px] object-cover"
+                    className="h-full w-full rounded-[14px] bg-card object-contain"
                   />
                 </button>
               ))}
