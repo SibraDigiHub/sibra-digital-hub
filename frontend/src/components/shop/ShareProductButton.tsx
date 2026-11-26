@@ -61,6 +61,9 @@ export function ShareProductButton({
       type="button"
       // Cards open the detail page on tap — sharing must not trigger that.
       onClick={(e) => {
+        // Share is rendered inside the product-card link on both storefront
+        // designs. Prevent the enclosing link's native navigation.
+        e.preventDefault()
         e.stopPropagation()
         void onShare()
       }}

@@ -372,19 +372,9 @@ export default function GatewayHero() {
   )
 
   const skip = useCallback(() => {
-    // During the run, Skip fast-forwards the sequence (B3).
-    if (zoneFx.active) {
-      zoneFx.skip()
-      return
-    }
-    let z: Zone = 'kids'
-    try {
-      const stored = window.localStorage.getItem('sdh_zone')
-      if (stored === 'creator') z = 'creator'
-    } catch {
-      /* ignore */
-    }
-    useAppStore.getState().enterZone(z)
+    // The transition hook reads the active run synchronously; don't branch
+    // on the possibly one-render-old `zoneFx.active` selector here.
+    zoneFx.skip()
   }, [zoneFx])
 
   return (

@@ -6,6 +6,12 @@
 // default keeps every caller safe when nothing runs.
 // ═══════════════════════════════════════════════════════════
 
+export const NOOP_ZONE_SKIP = () => undefined
+
 export const zoneSkipRef: { current: () => void } = {
-  current: () => undefined,
+  current: NOOP_ZONE_SKIP,
+}
+
+export function hasZoneSkipHandler(): boolean {
+  return zoneSkipRef.current !== NOOP_ZONE_SKIP
 }

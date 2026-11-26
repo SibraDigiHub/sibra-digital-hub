@@ -174,7 +174,8 @@ export function CatalogEngine({ initial }: { initial?: CatalogInitialData }) {
   // Fetch products — loading/error are derived from the request key
   const requestKey = `${zone}|${category ?? ''}|${search.trim()}|${sort}|${reload}`
   const loading = data.key !== requestKey
-  const error = data.error
+  // A previous request's error must not override the loading state for a new zone.
+  const error = data.key === requestKey && data.error
   const products = data.products
 
   // ── All-Products pagination (owner request) ──
@@ -219,23 +220,35 @@ export function CatalogEngine({ initial }: { initial?: CatalogInitialData }) {
 
   useEffect(() => {
     const ac = new AbortController()
-    const params = new URLSearchParams({ zone, sort, limit: '60' })
+    const requestedZone = zone
+    const params = new URLSearchParams({ zone: requestedZone, sort, limit: '60' })
     if (category) params.set('category', category)
     if (search.trim()) params.set('q', search.trim())
-    fetch(`/api/products?${params.toString()}`, { signal: ac.signal })
+    fetch(`/api/products?${params.toString()}`, { signal: ac.signal, cache: 'no-store' })
       .then((r) => {
         if (!r.ok) throw new Error('failed')
         return r.json() as Promise<{ products: ProductRow[] }>
       })
       .then((d) => {
-        setData({
-          key: requestKey,
-          products: d.products.map((row) => parseProduct(row as unknown as Record<string, unknown>) as unknown as Product),
-          error: false,
-        })
+        // AbortController cannot cancel a response that has already completed
+        // while its JSON body is still being parsed. Never commit stale results.
+        if (ac.signal.aborted) return
+        const parsed = d.products.map(
+          (row) => parseProduct(row as unknown as Record<string, unknown>) as unknown as Product,
+        )
+        // Fail closed: a cross-zone response must never be shown under another
+        // zone's background/card design, even if an intermediary mis-caches it.
+        if (parsed.some((product) => product.zone !== requestedZone)) {
+          throw new Error(`Catalog response contained products outside ${requestedZone}`)
+        }
+        // A transition can update the global zone before React has run the
+        // previous effect's cleanup. Re-check the authoritative store at the
+        // commit boundary so a late response can never populate the new view.
+        if ((useAppStore.getState().zone ?? 'kids') !== requestedZone) return
+        setData({ key: requestKey, products: parsed, error: false })
       })
       .catch((e: unknown) => {
-        if ((e as Error).name === 'AbortError') return
+        if ((e as Error).name === 'AbortError' || ac.signal.aborted) return
         setData({ key: requestKey, products: [], error: true })
         playFx('error')
         toast({ title: 'Could not load treasures', description: 'The catalog failed to load. Try again in a moment.' })

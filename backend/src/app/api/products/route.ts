@@ -60,6 +60,10 @@ export const GET = asHandler(async (req: NextRequest) => {
   const products = await listCatalog(query, req)
   // Admin requests (session cookie) see drafts/trash → must never be cached.
   if (hasAdminSessionCookie(req)) return json({ products })
+  // Zone-scoped catalogs must never reuse a response cached under a different
+  // query key by an intermediary configured to ignore query parameters.
+  // Product detail / unfiltered public listings retain the existing ETag cache.
+  if (query.zone) return json({ products })
   return cachedJson(req, { products }, { varyCookie: true })
 })
 
