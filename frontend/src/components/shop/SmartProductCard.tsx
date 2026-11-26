@@ -63,6 +63,7 @@ export function SmartProductCard({
 
   const rootRef = useRef<HTMLDivElement | null>(null)
   const tiltRef = useRef<HTMLDivElement | null>(null)
+  const navigationStartedRef = useRef(false)
 
   // T-V: the video's own YouTube frame LEADS the media list — a video
   // product shows its real thumbnail on the card, never the default
@@ -116,6 +117,11 @@ export function SmartProductCard({
   }
 
   const openDetail = () => {
+    if (navigationStartedRef.current) return
+    navigationStartedRef.current = true
+    // Use the mounted Next-router adapter on real routes (and the hash
+    // router on the SPA). A full document reload made Kids card taps appear
+    // unresponsive while the entire storefront booted again.
     playFx('whoosh')
     navigate('product', { productSlug: product.slug })
   }
@@ -126,7 +132,7 @@ export function SmartProductCard({
     const r = e.currentTarget.getBoundingClientRect()
     const px = (e.clientX - r.left) / r.width - 0.5
     const py = (e.clientY - r.top) / r.height - 0.5
-    el.style.transform = `rotateX(${(-py * 14).toFixed(2)}deg) rotateY(${(px * 14).toFixed(2)}deg)`
+    el.style.transform = `rotateX(${(-py * 5).toFixed(2)}deg) rotateY(${(px * 5).toFixed(2)}deg)`
   }
 
   const resetTilt = () => {
@@ -216,6 +222,7 @@ export function SmartProductCard({
           <button
             type="button"
             onClick={(e) => {
+              e.preventDefault()
               e.stopPropagation()
               flipTo(true)
             }}
@@ -234,10 +241,12 @@ export function SmartProductCard({
     <a
       href={openHref}
       onClick={(e) => {
+        // Preserve open-in-new-tab / modified clicks; route ordinary clicks
+        // through the app router so the shell and catalog are not reloaded.
+        if (e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return
         e.preventDefault()
         openDetail()
       }}
-      onKeyDown={frontKeyDown}
       inert={flipped || undefined}
       aria-label={`${product.title} — open details${priceLabel ? `, price ${priceLabel}` : ''}`}
       className="clay-card flip-face relative flex h-full cursor-pointer flex-col overflow-hidden"

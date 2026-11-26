@@ -205,7 +205,13 @@ export function CreatorCard({
     else if (visibleRef.current) safePlay(v)
   }, [flipped, isVideo])
 
+  const navigationStartedRef = useRef(false)
+
   const open = () => {
+    if (navigationStartedRef.current) return
+    navigationStartedRef.current = true
+    // Keep navigation inside Next on real routes and inside the hash router
+    // on the SPA. Avoid a full document reload for every product-card tap.
     playFx('flip')
     navigate('product', { productSlug: product.slug })
   }
@@ -233,6 +239,8 @@ export function CreatorCard({
       ? {
           href: openHref,
           onClick: (e: ReactMouseEvent<HTMLElement>) => {
+            // Modified clicks retain the real href (new tab/window).
+            if (e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return
             e.preventDefault()
             open()
           },
@@ -261,7 +269,7 @@ export function CreatorCard({
             {...frontTagProps}
             inert={flipped || undefined}
             aria-label={`${product.title} — open details${priceLabel ? `, price ${priceLabel}` : ''}`}
-            onKeyDown={onKeyDown}
+            onKeyDown={!openHref ? onKeyDown : undefined}
             className="cyber-card flip-face group flex h-full cursor-pointer flex-col overflow-hidden"
           >
       {/* Media — ONE primary cover for image products (gallery lives
@@ -400,6 +408,7 @@ export function CreatorCard({
         <button
           type="button"
           onClick={(e) => {
+            e.preventDefault()
             e.stopPropagation()
             flipTo(true)
           }}

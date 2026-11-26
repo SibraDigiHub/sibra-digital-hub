@@ -17,7 +17,7 @@ import { CREATOR_TOTAL_MS, KIDS_TOTAL_MS, PRODUCT_ART, type Zone } from './confi
 import type { ZoneMode } from './core/decide-mode'
 import { decideMode, debugTierOverride, detectEnvironment, logMode } from './core/decide-mode'
 import { clampTotal } from './core/timeline'
-import { zoneSkipRef } from './core/skip-registry'
+import { hasZoneSkipHandler, zoneSkipRef } from './core/skip-registry'
 import { useZoneRunStore, type ZoneTransitionRunData } from './core/run-store'
 import { resumeScoreContext } from './audio/engine'
 
@@ -100,7 +100,38 @@ export function useZoneTransition(): ZoneTransitionControls {
     [prime, setScenePaused],
   )
 
-  const skip = useCallback(() => zoneSkipRef.current(), [])
+  const skip = useCallback(() => {
+    // Read the run synchronously instead of relying on React's `active`
+    // render snapshot. On a fast first-visit click, that snapshot can still
+    // be false even though the selected-zone run has already started.
+    const run = useZoneRunStore.getState().run
+    if (run) {
+      if (hasZoneSkipHandler()) {
+        zoneSkipRef.current()
+      } else {
+        // If the stage already entered the zone and is only fading out,
+        // leave its normal completion path alone.
+        const app = useAppStore.getState()
+        if (app.view === 'shop' && app.zone === run.zone) return
+        // The lazy ZoneStage chunk/effect is not ready yet. Complete the
+        // selected zone directly rather than falling back to a stale
+        // localStorage zone from a previous visit.
+        app.enterZone(run.zone)
+        useZoneRunStore.getState().setRun(null)
+        app.setScenePaused(false)
+      }
+      return
+    }
+
+    // Gateway Skip (no animation selected): use the saved zone if present.
+    let zone: Zone = 'kids'
+    try {
+      if (window.localStorage.getItem('sdh_zone') === 'creator') zone = 'creator'
+    } catch {
+      /* private mode */
+    }
+    useAppStore.getState().enterZone(zone)
+  }, [])
 
   // Idle prefetch after the gateway paints — keeps the click instant and
   // both choreography chunks out of the shared bundle (B2).
