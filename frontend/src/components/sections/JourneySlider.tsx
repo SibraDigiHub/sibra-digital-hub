@@ -7,6 +7,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useAppStore } from '@/store/app-store'
 import { parseProduct } from '@/lib/parse-product'
 import { productMediaImages } from '@/lib/video-thumb'
+import { listThumbUrl } from '@/lib/image-url'
 import { playFx } from '@/lib/sound-fx'
 import { useMarqueeFallback } from '@/hooks/useMarqueeFallback'
 import { hydrateCategories, useZoneCategories } from '@/lib/categories'
@@ -193,7 +194,7 @@ export default function JourneySlider() {
         >
           <span className="block aspect-[4/3] overflow-hidden bg-black/5">
             <img
-              src={card.cover}
+              src={listThumbUrl(card.cover)}
               alt={`${card.product.title} product cover`}
               width={640}
               height={480}

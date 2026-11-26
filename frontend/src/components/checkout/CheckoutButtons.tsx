@@ -16,7 +16,7 @@ import { useEffect, useState } from 'react'
 import type { MouseEvent as ReactMouseEvent } from 'react'
 import confetti from 'canvas-confetti'
 import { useAppStore } from '@/store/app-store'
-import type { Product } from '@/types/marketplace'
+import type { Product, PlatformLink } from '@/types/marketplace'
 import { platformMeta } from '@/lib/platforms'
 import { useVisitorCurrency, visitorPriceLabel, resolveVisitorCurrencyInfo, type VisitorCurrency } from '@/lib/visitor-currency'
 import { VisitorPrice } from '@/components/shop/VisitorPrice'
@@ -73,6 +73,13 @@ function platformButtonClasses(id: string, zone: Product['zone']): string {
   const nonText = parts.filter((c) => !c.startsWith('text-')).join(' ')
   const text = parts.find((c) => c.startsWith('text-')) ?? 'text-foreground'
   return cn(nonText, zone === 'kids' ? (PLATFORM_LIGHT_TEXT[id] ?? 'text-foreground') : text)
+}
+
+/** Button text for a configured platform link — the 'custom' platform
+ *  shows the admin-defined name when one was set, else the default. */
+function platformButtonLabel(link: PlatformLink): string {
+  if (link.platform === 'custom' && link.label && link.label.trim()) return link.label.trim()
+  return platformMeta(link.platform).label
 }
 
 export function CheckoutButtons({
@@ -227,7 +234,7 @@ export function CheckoutButtons({
         ) : platformFallback ? (
           <button
             type="button"
-            aria-label={`${platformMeta(platformFallback.platform).label} — opens in a new tab`}
+            aria-label={`${platformButtonLabel(platformFallback)} — opens in a new tab`}
             onClick={(e) =>
               openExternal(
                 e,
@@ -244,7 +251,7 @@ export function CheckoutButtons({
             )}
           >
             <span aria-hidden="true">{platformMeta(platformFallback.platform).emoji}</span>
-            <span className="relative z-10 truncate">{platformMeta(platformFallback.platform).label}</span>
+            <span className="relative z-10 truncate">{platformButtonLabel(platformFallback)}</span>
           </button>
         ) : null}
 
@@ -350,12 +357,13 @@ export function CheckoutButtons({
         <div className={cn('flex gap-2', compact ? 'flex-col' : 'flex-row flex-wrap')}>
           {product.platformLinks.map((link, i) => {
             const meta = platformMeta(link.platform)
+            const label = platformButtonLabel(link)
             return (
               <button
                 key={`${link.platform}-${link.url}-${i}`}
                 type="button"
                 disabled={pending === `pl-${link.platform}`}
-                aria-label={`${meta.label}${priceLabel ? ` — ${priceLabel}` : ''}, opens in a new tab`}
+                aria-label={`${label}${priceLabel ? ` — ${priceLabel}` : ''}, opens in a new tab`}
                 onClick={(e) =>
                   openExternal(e, link.url, ['#E5B842', '#00F0FF', '#FAE8A7'], `pl-${link.platform}`, {
                     particles: 26,
@@ -373,7 +381,7 @@ export function CheckoutButtons({
                 <span aria-hidden="true" className="shrink-0 text-base leading-none">
                   {meta.emoji}
                 </span>
-                <span className="relative z-10 truncate">{meta.label}</span>
+                <span className="relative z-10 truncate">{label}</span>
               </button>
             )
           })}

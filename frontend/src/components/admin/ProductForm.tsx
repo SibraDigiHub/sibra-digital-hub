@@ -74,7 +74,7 @@ interface FormState {
   internationalLink: string
   indiaOn: boolean
   indiaLink: string
-  platformLinks: { platform: PlatformId; url: string }[]
+  platformLinks: { platform: PlatformId; url: string; label?: string }[]
   instantDownload: boolean
   deliverableUrl: string
   deliverableName: string
@@ -137,7 +137,7 @@ function initForm(product: ProductRow | null): { form: FormState; spatial: Spati
   }
   const p = parseProduct({ ...product }) as unknown as Product
   const zone = (p.zone === 'creator' ? 'creator' : 'kids') as Zone
-  const links = (p.platformLinks ?? []) as { platform: string; url: string }[]
+  const links = (p.platformLinks ?? []) as { platform: string; url: string; label?: string }[]
   return {
     form: {
       title: p.title ?? '',
@@ -160,7 +160,11 @@ function initForm(product: ProductRow | null): { form: FormState; spatial: Spati
       internationalLink: p.internationalLink ?? '',
       indiaOn: Boolean(p.indiaLink),
       indiaLink: p.indiaLink ?? '',
-      platformLinks: links.map((l) => ({ platform: l.platform as PlatformId, url: l.url })),
+      platformLinks: links.map((l) => ({
+        platform: l.platform as PlatformId,
+        url: l.url,
+        ...(typeof l.label === 'string' ? { label: l.label } : {}),
+      })),
       instantDownload: Boolean(p.instantDownload),
       deliverableUrl: p.deliverableUrl ?? '',
       deliverableName: p.deliverableName ?? '',
@@ -409,7 +413,15 @@ function previewVideoMedia(form: FormState): { kind: 'yt'; src: string } | { kin
 }
 
 function activePlatformMetas(form: FormState) {
-  return PLATFORMS.filter((meta) => form.platformLinks.some((l) => l.platform === meta.id && l.url.trim()))
+  return PLATFORMS.filter((meta) => form.platformLinks.some((l) => l.platform === meta.id && l.url.trim())).map(
+    (meta) => {
+      // The 'custom' platform shows the admin-defined button name when set.
+      if (meta.id !== 'custom') return meta
+      const link = form.platformLinks.find((l) => l.platform === 'custom')
+      const label = link?.label?.trim()
+      return label ? { ...meta, label } : meta
+    },
+  )
 }
 
 function PreviewBtn({ className, children }: { className?: string; children: React.ReactNode }) {
@@ -834,13 +846,25 @@ export default function ProductForm({ product, onDone }: ProductFormProps) {
   function togglePlatform(id: PlatformId, checked: boolean) {
     setForm((f) => {
       const others = f.platformLinks.filter((l) => l.platform !== id)
-      return { ...f, platformLinks: checked ? [...others, { platform: id, url: '' }] : others }
+      // The 'custom' platform also carries an admin-defined button name.
+      return {
+        ...f,
+        platformLinks: checked
+          ? [...others, { platform: id, url: '', ...(id === 'custom' ? { label: '' } : {}) }]
+          : others,
+      }
     })
   }
   function setPlatformUrl(id: PlatformId, url: string) {
     setForm((f) => ({
       ...f,
       platformLinks: f.platformLinks.map((l) => (l.platform === id ? { ...l, url } : l)),
+    }))
+  }
+  function setPlatformLabel(id: PlatformId, label: string) {
+    setForm((f) => ({
+      ...f,
+      platformLinks: f.platformLinks.map((l) => (l.platform === id ? { ...l, label } : l)),
     }))
   }
 
@@ -896,7 +920,13 @@ export default function ProductForm({ product, onDone }: ProductFormProps) {
       platformLinks: JSON.stringify(
         form.platformLinks
           .filter((l) => l.url.trim())
-          .map((l) => ({ platform: l.platform, url: l.url.trim() })),
+          .map((l) => ({
+            platform: l.platform,
+            url: l.url.trim(),
+            // Custom Link buttons may carry an admin-defined button name;
+            // other platforms always use their built-in label.
+            ...(l.platform === 'custom' && l.label && l.label.trim() ? { label: l.label.trim() } : {}),
+          })),
       ),
       instantDownload: form.instantDownload,
       // Instant-delivery values survive toggles and mode switches (owner rule):
@@ -1502,13 +1532,25 @@ export default function ProductForm({ product, onDone }: ProductFormProps) {
                         </span>
                       </label>
                       {checked && link && (
-                        <Input
-                          value={link.url}
-                          onChange={(e) => setPlatformUrl(meta.id, e.target.value)}
-                          placeholder={`https://…/${meta.id}-link`}
-                          aria-label={`${meta.short} URL`}
-                          className="mt-2 h-9 font-mono text-xs"
-                        />
+                        <div className="mt-2 space-y-2">
+                          {meta.id === 'custom' && (
+                            <Input
+                              value={link.label ?? ''}
+                              onChange={(e) => setPlatformLabel(meta.id, e.target.value)}
+                              placeholder="Button name, e.g. Buy on Topmate"
+                              aria-label="Custom link button name"
+                              maxLength={60}
+                              className="h-9"
+                            />
+                          )}
+                          <Input
+                            value={link.url}
+                            onChange={(e) => setPlatformUrl(meta.id, e.target.value)}
+                            placeholder={`https://…/${meta.id}-link`}
+                            aria-label={`${meta.short} URL`}
+                            className="h-9 font-mono text-xs"
+                          />
+                        </div>
                       )}
                     </div>
                   )

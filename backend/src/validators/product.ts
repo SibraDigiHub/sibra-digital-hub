@@ -4,7 +4,12 @@ export const zoneEnum = z.enum(['kids', 'creator'])
 export const productStatusEnum = z.enum(['draft', 'published', 'archived'])
 
 const jsonArrayOfStrings = z.union([z.string(), z.array(z.string()).default([])])
-const jsonPlatformLinks = z.union([z.string(), z.array(z.object({ platform: z.string(), url: z.string() })).default([])])
+// `label` — admin-defined button name for the 'custom' platform link
+// (optional; existing links without it keep the default label).
+const jsonPlatformLinks = z.union([
+  z.string(),
+  z.array(z.object({ platform: z.string(), url: z.string(), label: z.string().max(200).optional() })).default([]),
+])
 
 /** Product create/update payload — mirrors what the admin UI sends today. */
 export const productInputSchema = z.object({

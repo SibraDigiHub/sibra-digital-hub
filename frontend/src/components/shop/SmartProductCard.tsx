@@ -5,12 +5,13 @@
 // Tap the card → opens the FULL DETAIL PAGE (primary action).
 // "🛒 Quick Buy" flips the card 180° to purchase options, with
 // an always-visible "Open full page →" footer on the back so
-// the detail page is reachable from every state. 2000ms image
-// rotator with glowing pagination dots, ±7° pointer tilt, 3D
-// book styling for book-type products. The flip itself is a
-// compositor-driven CSS 3D transition (.flip-panel) so the
-// slow-motion rotation shows identically on every mobile AND
-// desktop browser, regardless of OS animation settings; the
+// the detail page is reachable from every state. The card shows
+// ONLY the primary cover image (no rotator, no hidden slide
+// downloads — the full gallery lives on the detail page), ±7°
+// pointer tilt, 3D book styling for book-type products. The flip
+// itself is a compositor-driven CSS 3D transition (.flip-panel)
+// so the slow-motion rotation shows identically on every mobile
+// AND desktop browser, regardless of OS animation settings; the
 // pointer tilt still respects reduced-motion.
 // ═══════════════════════════════════════════════════════════
 
@@ -25,8 +26,8 @@ import { VisitorPrice } from '@/components/shop/VisitorPrice'
 import { useAppStore } from '@/store/app-store'
 import { playFx } from '@/lib/sound-fx'
 import { cn } from '@/lib/utils'
-import { useRotator } from '@/hooks/useRotator'
 import { productMediaImages, imgFallbackToHq } from '@/lib/video-thumb'
+import { listThumbUrl } from '@/lib/image-url'
 import { CheckoutButtons } from '@/components/checkout/CheckoutButtons'
 import { ShareProductButton } from '@/components/shop/ShareProductButton'
 
@@ -66,34 +67,11 @@ export function SmartProductCard({
   // T-V: the video's own YouTube frame LEADS the media list — a video
   // product shows its real thumbnail on the card, never the default
   // hero photo (which is only for products with neither images nor video).
+  // Bandwidth rule: the card renders ONLY this primary cover — no
+  // secondary slide is ever in the DOM, preloaded or downloaded.
   const mediaImages = productMediaImages(product)
-  const images = mediaImages.length > 0 ? mediaImages : [FALLBACK_IMG]
-  const total = images.length
-  const {
-    index: rotatorIndex,
-    goTo,
-    next,
-    prev,
-    setPaused,
-    ref: rotatorRef,
-  } = useRotator(images, { enabled: !flipped })
+  const cover = (mediaImages.length > 0 ? mediaImages : [FALLBACK_IMG])[0]
 
-  // Hover/stay pauses the 2.5s auto-rotation; leaving resumes it.
-  // Touch swipe (and the ‹ › arrows) gives manual slide control.
-  const touchX = useRef<number | null>(null)
-  const onTouchStart = (e: React.TouchEvent<HTMLDivElement>) => {
-    touchX.current = e.touches[0]?.clientX ?? null
-  }
-  const onTouchEnd = (e: React.TouchEvent<HTMLDivElement>) => {
-    const start = touchX.current
-    touchX.current = null
-    if (start == null || total <= 1) return
-    const dx = (e.changedTouches[0]?.clientX ?? start) - start
-    if (Math.abs(dx) < 36) return
-    playFx('pop')
-    if (dx < 0) next()
-    else prev()
-  }
   // Visitor-currency price label (aria) — single currency, never both.
   const currency = useVisitorCurrency()
   const priceLabel = visitorPriceLabel(currency, product.priceUsd, product.priceInr)
@@ -167,86 +145,22 @@ export function SmartProductCard({
   // legacy div[role=button] when no openHref is given.
   const frontBody = (
     <>
-      {/* Rotating image area — auto-advances every 2.5s,
-          pauses while the visitor hovers/stays, resumes on leave */}
+      {/* Cover image area — the primary cover only. Every gallery
+          image (and the slide browsing UI) lives on the detail page. */}
       <div
-        ref={rotatorRef}
-        onMouseEnter={() => setPaused(true)}
-        onMouseLeave={() => setPaused(false)}
-        onTouchStart={onTouchStart}
-        onTouchEnd={onTouchEnd}
         className={cn(
           'relative min-h-0 flex-1 overflow-hidden',
           BOOK_CATEGORIES.includes(product.category) && 'book-spine book-pages',
         )}
       >
-        {images.map((src, i) => (
-          <img
-            key={`${src}-${i}`}
-            src={src}
-            alt={`${product.title} — preview ${i + 1} of ${total}`}
-            loading={priority && i === 0 ? 'eager' : 'lazy'}
-            onError={imgFallbackToHq}
-            className={cn(
-              'absolute inset-0 h-full w-full object-cover transition-opacity duration-500',
-              i === rotatorIndex ? 'opacity-100' : 'opacity-0',
-            )}
-          />
-        ))}
-
-        {total > 1 && (
-          <>
-            {/* manual slide arrows */}
-            <button
-              type="button"
-              aria-label="Previous image"
-              onClick={(e) => {
-                e.stopPropagation()
-                playFx('pop')
-                prev()
-              }}
-              className="absolute left-1.5 top-1/2 z-10 flex size-8 -translate-y-1/2 items-center justify-center rounded-full bg-black/35 text-white backdrop-blur-sm transition-all hover:bg-black/60 active:scale-90"
-            >
-              ‹
-            </button>
-            <button
-              type="button"
-              aria-label="Next image"
-              onClick={(e) => {
-                e.stopPropagation()
-                playFx('pop')
-                next()
-              }}
-              className="absolute right-1.5 top-1/2 z-10 flex size-8 -translate-y-1/2 items-center justify-center rounded-full bg-black/35 text-white backdrop-blur-sm transition-all hover:bg-black/60 active:scale-90"
-            >
-              ›
-            </button>
-            <div className="absolute bottom-2 left-1/2 z-10 flex -translate-x-1/2 items-center gap-1.5">
-              {images.map((src, i) => (
-                <button
-                  key={`dot-${i}`}
-                  type="button"
-                  aria-label={`Show image ${i + 1} of ${total}`}
-                  onClick={(e) => {
-                    e.stopPropagation()
-                    playFx('pop')
-                    goTo(i)
-                  }}
-                  className={cn(
-                    'size-2.5 rounded-full transition-all duration-300',
-                    i === rotatorIndex
-                      ? 'scale-125 bg-white shadow-[0_0_8px_rgba(255,179,71,0.95)]'
-                      : 'bg-white/55 hover:bg-white/85',
-                  )}
-                />
-              ))}
-            </div>
-          </>
-        )}
-
-        <span className="absolute bottom-2 right-2 z-10 rounded-full bg-black/45 px-2 py-0.5 text-[10px] font-semibold text-white">
-          Page {rotatorIndex + 1} of {total}
-        </span>
+        <img
+          src={listThumbUrl(cover)}
+          alt={`${product.title} — product cover`}
+          loading={priority ? 'eager' : 'lazy'}
+          decoding="async"
+          onError={imgFallbackToHq}
+          className="absolute inset-0 h-full w-full object-cover"
+        />
 
         {product.badge && (
           <span className="brutal-sticker absolute left-2 top-2 z-10 bg-[#FFB347] px-2.5 py-1 text-xs font-extrabold text-[#4a2800]">

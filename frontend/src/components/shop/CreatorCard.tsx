@@ -10,8 +10,8 @@
 // (.flip-panel), so the slow-motion rotation shows identically
 // on every mobile AND desktop browser. The back carries the
 // spec sheet + checkout with an always-visible "OPEN FULL
-// PAGE →" footer; the preview video/rotator pause while the
-// back is shown.
+// PAGE →" footer; the preview video pauses while the back is
+// shown.
 // ═══════════════════════════════════════════════════════════
 
 import { useEffect, useRef, useState } from 'react'
@@ -20,9 +20,9 @@ import { X } from 'lucide-react'
 import { useAppStore } from '@/store/app-store'
 import type { Product, RatingSummary } from '@/types/marketplace'
 import { platformMeta } from '@/lib/platforms'
-import { useRotator } from '@/hooks/useRotator'
 import { playFx } from '@/lib/sound-fx'
 import { youtubeThumbnailUrl, imgFallbackToHq } from '@/lib/video-thumb'
+import { listThumbUrl } from '@/lib/image-url'
 import { cn } from '@/lib/utils'
 import { useVisitorCurrency, visitorPriceLabel } from '@/lib/visitor-currency'
 import { VisitorPrice } from '@/components/shop/VisitorPrice'
@@ -94,21 +94,6 @@ export function CreatorCard({
       : null
   const cover = product.images[0] ?? FALLBACK_IMG
 
-  // Zone B image cards auto-cycle every 2.5s (pauses while the
-  // visitor hovers/stays; arrows/swipe/dots give manual slide).
-  // Video previews keep their own playback — untouched.
-  const rotImages = product.images.length > 0 ? product.images : [FALLBACK_IMG]
-  const isImgRotator = !isVideo && rotImages.length > 1
-  const {
-    index: rotIdx,
-    goTo,
-    next,
-    prev,
-    setPaused,
-  } = useRotator(rotImages, { enabled: isImgRotator && !flipped })
-
-  const touchX = useRef<number | null>(null)
-
   // ── Dead-embed detection (IFrame Player API postMessage handshake) ──
   // The iframe content is cross-origin, so "is it playing?" can't be read
   // directly — but the player answers a `listening` handshake with
@@ -155,20 +140,6 @@ export function CreatorCard({
       for (const t of timers) clearTimeout(t)
     }
   }, [ytId])
-
-  const onTouchStart = (e: React.TouchEvent<HTMLDivElement>) => {
-    touchX.current = e.touches[0]?.clientX ?? null
-  }
-  const onTouchEnd = (e: React.TouchEvent<HTMLDivElement>) => {
-    const start = touchX.current
-    touchX.current = null
-    if (start == null || !isImgRotator) return
-    const dx = (e.changedTouches[0]?.clientX ?? start) - start
-    if (Math.abs(dx) < 36) return
-    playFx('pop')
-    if (dx < 0) next()
-    else prev()
-  }
 
   // Scroll reveal
   useEffect(() => {
@@ -293,14 +264,10 @@ export function CreatorCard({
             onKeyDown={onKeyDown}
             className="cyber-card flip-face group flex h-full cursor-pointer flex-col overflow-hidden"
           >
-      {/* Media */}
-      <div
-        className="relative aspect-video w-full overflow-hidden bg-black/50"
-        onMouseEnter={isImgRotator ? () => setPaused(true) : undefined}
-        onMouseLeave={isImgRotator ? () => setPaused(false) : undefined}
-        onTouchStart={onTouchStart}
-        onTouchEnd={onTouchEnd}
-      >
+      {/* Media — ONE primary cover for image products (gallery lives
+          on the detail page; no hidden slide downloads), video previews
+          keep their own playback. */}
+      <div className="relative aspect-video w-full overflow-hidden bg-black/50">
         {ytId ? (
           ytEmbedFailed ? (
             /* Embed can't play (embed-disabled video / blocked player) —
@@ -353,72 +320,15 @@ export function CreatorCard({
             aria-hidden="true"
             className="absolute inset-0 h-full w-full object-cover"
           />
-        ) : isImgRotator ? (
-          <>
-            {rotImages.map((src, i) => (
-              <img
-                key={`${src}-${i}`}
-                src={src}
-                alt={i === rotIdx ? `${product.title} preview ${i + 1} of ${rotImages.length}` : ''}
-                aria-hidden={i === rotIdx ? undefined : 'true'}
-                loading="lazy"
-                className={cn(
-                  'absolute inset-0 h-full w-full object-cover transition-opacity duration-500',
-                  i === rotIdx ? 'opacity-100' : 'opacity-0',
-                  !reducedMotion && 'transition-transform duration-500 group-hover:scale-105',
-                )}
-              />
-            ))}
-            <button
-              type="button"
-              aria-label="Previous image"
-              onClick={(e) => {
-                e.stopPropagation()
-                playFx('pop')
-                prev()
-              }}
-              className="absolute left-1.5 top-1/2 z-10 flex size-7 -translate-y-1/2 items-center justify-center rounded-full bg-black/45 font-mono text-xs text-[#00F0FF] backdrop-blur-sm transition-all hover:bg-black/70 active:scale-90"
-            >
-              ‹
-            </button>
-            <button
-              type="button"
-              aria-label="Next image"
-              onClick={(e) => {
-                e.stopPropagation()
-                playFx('pop')
-                next()
-              }}
-              className="absolute right-1.5 top-1/2 z-10 flex size-7 -translate-y-1/2 items-center justify-center rounded-full bg-black/45 font-mono text-xs text-[#00F0FF] backdrop-blur-sm transition-all hover:bg-black/70 active:scale-90"
-            >
-              ›
-            </button>
-            <div className="absolute bottom-1.5 left-1/2 z-10 flex -translate-x-1/2 items-center gap-1">
-              {rotImages.map((src, i) => (
-                <button
-                  key={`dot-${i}`}
-                  type="button"
-                  aria-label={`Show image ${i + 1} of ${rotImages.length}`}
-                  onClick={(e) => {
-                    e.stopPropagation()
-                    playFx('pop')
-                    goTo(i)
-                  }}
-                  className={cn(
-                    'size-1.5 rounded-full transition-all duration-300',
-                    i === rotIdx
-                      ? 'scale-125 bg-[#00F0FF] shadow-[0_0_8px_rgba(0,240,255,0.9)]'
-                      : 'bg-white/40 hover:bg-white/70',
-                  )}
-                />
-              ))}
-            </div>
-          </>
         ) : (
+          /* Image products: the primary cover only — the full gallery
+             lives on the detail page, no hidden slide downloads. */
           <img
-            src={cover}
+            src={listThumbUrl(cover)}
             alt={`${product.title} preview`}
             loading="lazy"
+            decoding="async"
+            onError={imgFallbackToHq}
             className={cn(
               'absolute inset-0 h-full w-full object-cover',
               !reducedMotion && 'transition-transform duration-500 group-hover:scale-105',
