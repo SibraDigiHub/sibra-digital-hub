@@ -56,7 +56,7 @@ import {
 type Step = 'form' | 'upi' | 'razorpay' | 'success'
 
 /** Sub-states of the Razorpay checkout step (§5.2). */
-type RazorpayStage = 'opening' | 'waiting' | 'dismissed' | 'failed' | 'error'
+type RazorpayStage = 'opening' | 'ready' | 'waiting' | 'dismissed' | 'failed' | 'error'
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
 const POLL_INTERVAL_MS = 3000
@@ -270,6 +270,7 @@ export function InstantDownloadDialog({
       if (pollTimer.current) clearInterval(pollTimer.current)
       let ticks = 0
       let failures = 0
+      setPollTicks(0)
       setPollStalled(false)
       pollTimer.current = setInterval(async () => {
         ticks += 1
@@ -319,7 +320,7 @@ export function InstantDownloadDialog({
           })
         }
       }, POLL_INTERVAL_MS)
-  }, [])
+  }, [email, goToSuccess])
   /** Forward the checkout callback to the server — IT decides the truth. */
   const verifyPayment = useCallback(
     async (response: RazorpayHandlerResponse) => {
@@ -341,10 +342,20 @@ export function InstantDownloadDialog({
           // thank-you page (watch-mode orders keep their watch link only).
           stashDownloadUrl(product.deliveryMode !== 'watch' && data.downloadUrl ? downloadPageUrl(data.downloadUrl) : '')
           stashRateUrl(data.rateUrl ?? '')
-          // Verified + fulfilled — the status poll confirms PAID and flips to
-          // the success step (single source of truth, no double celebration).
           setPaidEmail(data.order?.customerEmail ?? email.trim())
-          if (orderId) startPolling(orderId)
+
+          // The verify endpoint returns only after the server has verified
+          // the Razorpay signature/capture and run idempotent fulfillment.
+          // When it returns PAID, do not add another 3-second status-poll
+          // round trip before showing success.
+          if (data.order?.status === 'paid') {
+            if (pollTimer.current) clearInterval(pollTimer.current)
+            pollTimer.current = null
+            goToSuccess()
+          } else if (orderId) {
+            // Defensive fallback for a future non-final successful response.
+            startPolling(orderId)
+          }
           return
         }
         if (res.status === 409) {
@@ -365,7 +376,7 @@ export function InstantDownloadDialog({
         toast({ title: 'Network hiccup', description: 'We could not confirm the payment. Check your connection — if you were charged, the delivery email will still arrive.' })
       }
     },
-    [email, orderId, toast],
+    [email, goToSuccess, orderId, product.deliveryMode, startPolling, toast],
   )
 
   // ── Razorpay Standard Checkout (§5.2) — opened once the step renders ──
@@ -407,7 +418,10 @@ export function InstantDownloadDialog({
               // Customer closed the modal — the order stays payable; retry
               // re-opens the SAME Razorpay Order (no duplicate session).
               setRzpStage('dismissed')
-              playFx('error')
+              // Dismissal is not proof that no payment was made: a UPI/card
+              // authorization can still be processing. Reconcile the order
+              // before offering the customer a definitive payment outcome.
+              startPolling(orderId)
             },
           },
           handler: (response: RazorpayHandlerResponse) => {
@@ -421,10 +435,15 @@ export function InstantDownloadDialog({
         // shows the error and stays open for a retry within Razorpay UI.
         checkout.on?.('payment.failed', () => {
           if (!live || cancelled) return
-          setRzpStage('error')
+          // Standard Checkout already presents the failure and retry UI.
+          // Do not open a second website popup over the gateway modal.
           playFx('error')
         })
         checkout.open()
+        // The Razorpay sheet now owns the payment UI. Keep the underlying
+        // website dialog quiet until its handler actually asks us to verify;
+        // an 'opening' spinner must not remain visible throughout payment.
+        if (live && !cancelled) setRzpStage('ready')
         // Radix's dialog lock sets `pointer-events: none` on <body> while our
         // dialog is open; the gateway sheet is a body-level child and INHERITS
         // it — the sheet then renders but ignores every click. Re-enable
@@ -591,7 +610,13 @@ export function InstantDownloadDialog({
   const marketplaceHint = product.platformLinks.length > 0
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
+    <Dialog
+      // Razorpay Standard Checkout owns the payment UI. Hide the website
+      // dialog and its overlay/spinners while the gateway is active/verifying.
+      // Keep the existing recovery UI available if Checkout cannot open/verify.
+      open={open && (step !== 'razorpay' || rzpStage === 'waiting' || rzpStage === 'failed' || rzpStage === 'error' || rzpStage === 'dismissed')}
+      onOpenChange={onOpenChange}
+    >
       <DialogContent className="max-w-md sm:max-w-md">
         <div className="max-h-[85dvh] overflow-y-auto nice-scroll pr-1">
           {step === 'form' && (
@@ -793,19 +818,20 @@ export function InstantDownloadDialog({
               </DialogHeader>
 
               <div className="mt-2 flex flex-col items-center gap-4">
-                {(rzpStage === 'opening' || rzpStage === 'waiting') && (
+                {rzpStage === 'opening' && (
                   <div className="flex flex-col items-center gap-2 text-sm text-muted-foreground" role="status" aria-live="polite">
                     <span className="flex items-center gap-2">
                       <Loader2 className="size-4 animate-spin text-primary" aria-hidden="true" />
                       {rzpStage === 'opening' ? 'Opening secure Razorpay Checkout…' : 'Confirming your payment…'}
                     </span>
-                    {rzpStage === 'waiting' && <span className="text-xs">This takes a moment — don&apos;t close this dialog.</span>}
-                  </div>
+                            </div>
                 )}
                 {rzpStage === 'dismissed' && (
                   <div className="w-full rounded-lg border border-amber-400/60 bg-amber-100 px-3 py-3 text-sm text-amber-900" role="status">
                     <p className="font-semibold">Payment window closed.</p>
-                    <p className="mt-1 text-xs">No charge was made. You can reopen the checkout and try again whenever you like.</p>
+                    <p className="mt-1 text-xs">
+                      If you approved a payment just before closing, confirmation may still be processing. We&apos;ll check the order before showing a final result.
+                    </p>
                     <Button
                       type="button"
                       variant="outline"
@@ -844,19 +870,64 @@ export function InstantDownloadDialog({
                     </Button>
                   </div>
                 )}
-                <div className="flex flex-col items-center gap-2 text-sm text-muted-foreground" role="status" aria-live="polite">
-                  <span className="flex items-center gap-2">
-                    <Loader2 className="size-4 animate-spin text-primary" aria-hidden="true" />
-                    Waiting for payment confirmation…
-                  </span>
-                  {pollTicks > POLL_MAX_TICKS && (
-                    <span className="text-xs">Still processing — you&apos;ll get an email the moment your payment lands.</span>
-                  )}
-                  {pollStalled && (
-                    <span className="text-xs">Payment confirmation is stuck right now — if you already paid, the delivery email will still arrive. You can close this dialog and try again.</span>
-                  )}
-                </div>
-                {paymentBlocked && (
+                {(rzpStage === 'waiting' || rzpStage === 'dismissed') && (
+        <div
+          className="w-full rounded-xl border border-primary/20 bg-gradient-to-b from-primary/[0.06] to-background p-4 shadow-sm"
+          role="status"
+          aria-live="polite"
+        >
+          <div className="flex items-start gap-3">
+            <div className="flex size-11 shrink-0 items-center justify-center rounded-full bg-primary/10">
+              <Loader2 className="size-6 animate-spin text-primary" aria-hidden="true" />
+            </div>
+            <div className="min-w-0 flex-1">
+              <p className="text-sm font-semibold text-foreground">
+                Your payment is being securely confirmed
+              </p>
+              <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
+                We're checking your payment with our server. Your order will be
+                completed only after successful payment verification.
+              </p>
+            </div>
+          </div>
+
+          <div className="mt-4 space-y-3 rounded-lg bg-muted/50 p-3">
+            <div className="flex items-center gap-2 text-sm">
+              <span className="flex size-6 shrink-0 items-center justify-center rounded-full bg-primary/10 text-xs font-semibold text-primary">
+                1
+              </span>
+              <span className="font-medium">Verifying your payment</span>
+              <Loader2 className="ml-auto size-4 animate-spin text-primary" aria-hidden="true" />
+            </div>
+            <div className="ml-3 h-4 border-l border-dashed border-border" />
+            <div className="flex items-center gap-2 text-sm text-muted-foreground">
+              <span className="flex size-6 shrink-0 items-center justify-center rounded-full border border-border text-xs">
+                2
+              </span>
+              <span>Your Thank You page and product access</span>
+            </div>
+          </div>
+
+          <div className="mt-3 rounded-lg border border-amber-500/20 bg-amber-500/[0.07] p-3">
+            <p className="text-xs font-semibold text-foreground">
+              Please keep this page open
+            </p>
+            <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
+              Don't refresh this page or press Back while we confirm your payment.
+              Your product access will appear automatically after our server
+              confirms successful payment.
+            </p>
+          </div>
+
+          {(pollStalled || pollTicks > POLL_MAX_TICKS) && (
+            <p className="mt-3 text-center text-xs leading-relaxed text-muted-foreground">
+              Confirmation is taking longer than expected. Please keep this page
+              open while we continue checking your order.
+            </p>
+          )}
+        </div>
+      )}
+      {paymentBlocked && (
                   <div className="w-full rounded-lg border border-amber-400/60 bg-amber-100 px-3 py-3 text-sm text-amber-900" role="alert">
                     <p className="font-semibold">Your card payment couldn’t be accepted for this order.</p>
                     <p className="mt-1 text-xs">
