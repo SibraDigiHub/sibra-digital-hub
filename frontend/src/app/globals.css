@@ -962,3 +962,28 @@ html[data-zone='kids'] .how-card:hover {
     opacity: 0.65;
   }
 }
+
+/* ═══════════════════════════════════════════════════════════
+   Gallery fade — detail-page main image swap. Only ONE gallery
+   image is mounted at a time (bandwidth rule: an image the
+   visitor hasn't opened is never downloaded); this keeps the
+   premium cross-fade feel when the active image changes.
+   ═══════════════════════════════════════════════════════════ */
+@keyframes gallery-fade {
+  from {
+    opacity: 0;
+    transform: scale(1.015);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+.gallery-fade {
+  animation: gallery-fade 0.35s ease-out both;
+}
+@media (prefers-reduced-motion: reduce) {
+  .gallery-fade {
+    animation: none;
+  }
+}

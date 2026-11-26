@@ -686,7 +686,7 @@ export function InstantDownloadDialog({
                               rel="noopener noreferrer"
                               className="rounded-full bg-white px-2.5 py-1 text-[11px] font-bold text-amber-900 underline-offset-2 hover:underline"
                             >
-                              {platformMeta(pl.platform).short}
+                              {pl.platform === 'custom' && pl.label?.trim() ? pl.label.trim() : platformMeta(pl.platform).short}
                             </a>
                           ))}
                         </div>
