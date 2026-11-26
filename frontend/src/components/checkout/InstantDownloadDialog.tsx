@@ -24,7 +24,7 @@ import confetti from 'canvas-confetti'
 // `qrcode` is lazy-imported at the UPI step below — the checkout bundle
 // should not carry the QR encoder for every product page load.
 import { motion } from 'framer-motion'
-import { Check, Copy, Loader2 } from 'lucide-react'
+import { Check, Copy, Loader2, MailCheck } from 'lucide-react'
 import type { Product } from '@/types/marketplace'
 import { formatMoney } from '@/types/marketplace'
 import { platformMeta } from '@/lib/platforms'
@@ -630,8 +630,32 @@ export function InstantDownloadDialog({
                     </span>
                   ) : null}
                 </DialogTitle>
-                <DialogDescription className="text-left">
-                  Price shown for your region — we detect your country from your connection. Get your file by email in seconds. No account needed.
+                <motion.div
+                  initial={{ opacity: 0, y: 8 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ duration: 0.45, ease: 'easeOut' }}
+                  className="mt-3 overflow-hidden rounded-xl border border-amber-400/50 bg-gradient-to-r from-amber-50 via-rose-50 to-violet-50 px-3 py-3 shadow-[0_6px_22px_rgba(217,119,6,0.12)] dark:from-amber-500/10 dark:via-rose-500/10 dark:to-violet-500/10"
+                >
+                  <div className="flex items-start gap-2.5">
+                    <span className="mt-0.5 flex size-8 shrink-0 items-center justify-center rounded-full bg-white/80 text-amber-600 shadow-sm dark:bg-white/10 dark:text-amber-300">
+                      <MailCheck className="size-4" aria-hidden="true" />
+                    </span>
+                    <div className="min-w-0 text-left">
+                      <motion.p
+                        className="bg-[linear-gradient(90deg,#b45309_0%,#db2777_28%,#7c3aed_55%,#0f766e_78%,#b45309_100%)] bg-[length:250%_100%] bg-clip-text text-sm font-extrabold tracking-wide text-transparent"
+                        animate={{ backgroundPosition: ['0% 50%', '100% 50%', '0% 50%'] }}
+                        transition={{ duration: 4.5, ease: 'linear', repeat: Infinity }}
+                      >
+                        PLEASE CHECK YOUR EMAIL ADDRESS
+                      </motion.p>
+                      <p className="mt-1 text-xs leading-relaxed text-amber-950 dark:text-amber-100">
+                        Your secure download link will be sent to this email. Please enter the correct email so you receive your file without delay.
+                      </p>
+                    </div>
+                  </div>
+                </motion.div>
+                <DialogDescription className="mt-2 text-left">
+                  {/* Price shown for your region — we detect your country from your connection. Get your file by email in seconds. No account needed. */}
                 </DialogDescription>
               </DialogHeader>
 

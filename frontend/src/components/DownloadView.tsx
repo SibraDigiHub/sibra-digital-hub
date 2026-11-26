@@ -11,7 +11,7 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { motion } from 'framer-motion'
-import { Download, ShieldCheck, Clock, AlertTriangle, ArrowLeft, FileText, Mail, Loader2 } from 'lucide-react'
+import { Download, ShieldCheck, Clock, AlertTriangle, ArrowLeft, FileText, Mail, Loader2, Star } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { useAppStore } from '@/store/app-store'
 
@@ -170,6 +170,15 @@ export default function DownloadView() {
                 )}
               </>
             )}
+            <Button
+              variant="outline"
+              onClick={() => {
+                if (token) navigate('rate', { downloadToken: token })
+              }}
+              className="mt-3 h-11 w-full rounded-full border-amber-400/50 bg-amber-400/10 text-sm font-semibold text-[#fae8a7] hover:bg-amber-400/20"
+            >
+              <Star className="mr-2 h-4 w-4 fill-current" aria-hidden="true" /> Rate &amp; Review
+            </Button>
             <div className="mt-5 space-y-1.5 text-xs text-[#9aa89e]">
               <p className="flex items-center justify-center gap-1.5">
                 <Clock className="h-3.5 w-3.5" /> Link valid 48 hours · 5 downloads max
