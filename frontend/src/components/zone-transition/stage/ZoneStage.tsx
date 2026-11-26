@@ -32,7 +32,7 @@ import { createZoneMachine, type ZoneMachine, type ZonePhase } from '../core/mac
 import { buildZoneStageTimeline, clampTotal, scaleBeats } from '../core/timeline'
 import { createLifecycle, type Lifecycle } from '../core/lifecycle'
 import { htmlBodyGuardProps, snapshotStyles, stylesDiffer, type StyleSnapshot } from '../core/scroll-safety'
-import { zoneSkipRef } from '../core/skip-registry'
+import { NOOP_ZONE_SKIP, zoneSkipRef } from '../core/skip-registry'
 import type { ScoreHandle } from '../audio/engine'
 import Wipe from './Wipe'
 import ReducedCpuStage from '../fallback/ReducedCpuStage'
@@ -51,8 +51,6 @@ export interface ZoneStageProps {
   onEnterZone: (zone: Zone) => void
   onDone: () => void
 }
-
-const NOOP = () => undefined
 
 export default function ZoneStage(props: ZoneStageProps): JSX.Element {
   const containerRef = useRef<HTMLDivElement>(null)
@@ -150,7 +148,7 @@ export default function ZoneStage(props: ZoneStageProps): JSX.Element {
       choreoTlRef.current = null
       scoreRef.current?.dispose()
       scoreRef.current = null
-      zoneSkipRef.current = NOOP
+      zoneSkipRef.current = NOOP_ZONE_SKIP
       restoreGuards(guards)
     }
     /** ONE deterministic completion path (done + skip): fade the overlay,
@@ -161,7 +159,7 @@ export default function ZoneStage(props: ZoneStageProps): JSX.Element {
       if (finished) return
       finished = true
       machine.forceDone()
-      zoneSkipRef.current = NOOP
+      zoneSkipRef.current = NOOP_ZONE_SKIP
       scoreRef.current?.stop(AUDIO_FADE_MS)
       gsap.to(container, { opacity: 0, duration: fadeMs / 1000, ease: 'power1.in', overwrite: true })
       completionTimer = window.setTimeout(() => {

@@ -176,6 +176,9 @@ setup-local-and-vercel-deploy-after-download-from-GLM 5.3.md/
 question_answer.md/
 ENV_SETUP.md/
 
+# ===== Patch folder and files =====
+patch-files/
+
 # ===== USER-REQUESTED PRIVATE FOLDERS =====
 /docs/
 /zscripts/
