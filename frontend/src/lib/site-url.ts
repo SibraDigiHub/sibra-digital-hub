@@ -7,12 +7,13 @@
 // images, canonical and sitemap URLs are absolute.
 // ═══════════════════════════════════════════════════════════
 
-import { feEnv } from '@/config/env'
 
 export const SITE_FALLBACK_URL = 'http://localhost:3000'
 
 export function siteUrl(): string {
-  const raw = feEnv().NEXT_PUBLIC_SITE_URL?.trim()
+  // Direct access lets Next.js inline this NEXT_PUBLIC_ variable
+  // into client bundles that also import siteUrl().
+  const raw = process.env.NEXT_PUBLIC_SITE_URL?.trim()
   const production = process.env.NODE_ENV === 'production'
   const allowLocalProduction = process.env.ALLOW_LOCAL_SITE_URL === 'true'
 
