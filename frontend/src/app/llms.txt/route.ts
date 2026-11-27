@@ -1,4 +1,5 @@
-import { SITE_NAME, siteUrl } from "@/lib/site";
+import { SITE_NAME } from "@/lib/site";
+import { siteUrl } from "@/lib/site-url";
 import { getAllPublishedProducts, getCategories } from "@/lib/seo-data";
 import { REAL_LEGAL_PAGES } from "@/lib/real-routes";
 
@@ -66,7 +67,6 @@ Every product has its own crawlable page under ${base}/product/<slug>, and the c
 - [Gateway (home)](${base}/): 3D split gateway — choose the Kids or the Creator world to enter the hub.
 - [Kids zone — Digital Kidosphere](${base}/shop?zone=kids): Joyful kids' printables — coloring books, activity & puzzles, story e-books, ABCD & number tracing, flashcards & crafts, and parents' guides.
 - [Creator hub — Creator & Developer Hub](${base}/shop?zone=creator): Premium Canva templates, AI prompts, motion assets, scripts & automations, website UI kits and ATS resumes.
-- [Universal catalog](${base}/shop): All products across both zones with search, category filters and sorting.
 
 ## Categories
 
@@ -89,8 +89,6 @@ ${productLines}
 
 ${legalLines}
 
-- [About Us](${base}/#/about): Who runs ${SITE_NAME}, what it sells and how instant digital delivery works.
-- [Pricing Details](${base}/#/pricing): How prices work — India uses INR base prices; international checkout uses a merchant-enabled local currency when available, otherwise USD, with daily FX conversion from the USD base price.
 `;
 
   return new Response(body, {
