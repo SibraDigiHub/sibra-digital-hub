@@ -10,7 +10,8 @@ import { orderRepo } from '@/repositories/order-repo'
 import { productRepo } from '@/repositories/product-repo'
 import { applyProductPatch, productExists } from '@/services/product-service'
 import { computeMediaRefs, removedManagedRefs } from '@/services/storage-refs'
-import { notifyFrontendRevalidate, scheduleDelete } from '@/services/storage-cleanup'
+import { notifyFrontendRevalidate } from '@/services/frontend-revalidation'
+import { scheduleDelete } from '@/services/storage-cleanup'
 
 export const dynamic = 'force-dynamic'
 
@@ -42,13 +43,17 @@ export const PATCH = asHandler(async (req: NextRequest, { params }: { params: Pr
   let scheduled = 0
   if (removed.length > 0) {
     scheduled = await scheduleDelete(removed, 'product_update', id)
-    void notifyFrontendRevalidate()
   }
 
-  // Audit trail: record which fields changed
+  // Revalidate only when this save changes public catalog content or moves
+  // a product into/out of the published state. Run after the DB commit;
+  // notification failure is best-effort and does not undo the admin save.
   const changed = Object.keys(data).filter(
     (k) => JSON.stringify((before as Record<string, unknown>)[k]) !== JSON.stringify((product as Record<string, unknown>)[k]),
   )
+  if (changed.length > 0 && (before.status === 'published' || product.status === 'published')) {
+    await notifyFrontendRevalidate()
+  }
   await writeAudit({
     action,
     entity: 'product',
@@ -84,8 +89,8 @@ export const DELETE = asHandler(async (req: NextRequest, { params }: { params: P
     let scheduled = 0
     if (orphans.length > 0) {
       scheduled = await scheduleDelete(orphans, 'product_purge', id)
-      void notifyFrontendRevalidate()
     }
+    if (product.status === 'published') await notifyFrontendRevalidate()
     await writeAudit({ action: 'product.purge', entity: 'product', entityId: id, label: product.title, diff: { orderCount, ...(scheduled > 0 ? { storageCleanupScheduled: scheduled } : {}) }, req })
     return json({ ok: true, purged: true })
   }
@@ -93,6 +98,7 @@ export const DELETE = asHandler(async (req: NextRequest, { params }: { params: P
   // Default: soft delete → trash (orders stay intact, store hides it)
   if (product.status === 'archived') return json({ ok: true, archived: true })
   await productRepo.update(id, { status: 'archived', featured: false })
+  if (product.status === 'published') await notifyFrontendRevalidate()
   await writeAudit({ action: 'product.archive', entity: 'product', entityId: id, label: product.title, req })
   return json({ ok: true, archived: true })
 })

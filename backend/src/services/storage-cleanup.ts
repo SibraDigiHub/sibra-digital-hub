@@ -222,27 +222,3 @@ export async function runPendingDeletes(): Promise<CleanupRunStats> {
   }
   return stats
 }
-
-/**
- * Ask the frontend to revalidate the cached catalog/sitemap after a
- * media-changing save (shared ISR tag `real-routes`). Best-effort and
- * silent when no frontend URL is configured — never fails the save.
- */
-export async function notifyFrontendRevalidate(): Promise<boolean> {
-  const base = process.env.PUBLIC_WEB_URL
-  const key = process.env.INTERNAL_API_KEY
-  if (!base || !key) return false
-  try {
-    const res = await fetch(`${base.replace(/\/+$/, '')}/api/revalidate`, {
-      method: 'POST',
-      // The frontend proxy middleware re-stamps `x-internal-key` on every
-      // /api/* request, so the revalidate route authenticates via
-      // `x-revalidate-key` (same shared secret, unstamped header).
-      headers: { 'x-internal-key': key, 'x-revalidate-key': key },
-      signal: AbortSignal.timeout(5000),
-    })
-    return res.ok
-  } catch {
-    return false
-  }
-}

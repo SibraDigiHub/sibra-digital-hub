@@ -1,8 +1,8 @@
 // POST /api/revalidate — server-to-server cache revalidation (additive).
 //
-// The BACKEND calls this after a media-changing admin save so cached
-// catalog pages / sitemap re-pull within seconds instead of waiting for
-// the ≤60 s ISR window. Tag: REAL_ROUTES_TAG — the shared tag already
+// The BACKEND calls this after a public product/category mutation so cached
+// catalog pages / sitemap / llms.txt re-pull on their next request instead
+// of waiting for the ≤60 s ISR window. Tag: REAL_ROUTES_TAG — the shared tag
 // used by seo-data.ts.
 //
 // AUTH NOTE: the frontend proxy.ts middleware RE-STAMPS `x-internal-key`
@@ -32,6 +32,9 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
   if (!revalidateKeyValid(req)) {
     return NextResponse.json({ ok: false, error: 'unauthorized' }, { status: 401 })
   }
-  revalidateTag(REAL_ROUTES_TAG, 'max')
+  // Product/category mutations must be reflected on the next sitemap,
+  // category, product and llms.txt request. expire: 0 makes the next read
+  // block for fresh data instead of serving one stale-while-revalidate copy.
+  revalidateTag(REAL_ROUTES_TAG, { expire: 0 })
   return NextResponse.json({ ok: true })
 }

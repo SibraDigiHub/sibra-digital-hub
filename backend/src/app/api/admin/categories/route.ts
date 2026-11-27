@@ -5,6 +5,7 @@ import { asHandler, json, parseBody, parseQuery } from '@/lib/api'
 import { isAdmin } from '@/lib/admin-auth'
 import { unauthorized } from '@/lib/api'
 import { writeAudit } from '@/lib/audit'
+import { notifyFrontendRevalidate } from '@/services/frontend-revalidation'
 import { adminListCategories, createCategory } from '@/services/category-service'
 import { categoryCreateSchema, categoryListQuerySchema } from '@/validators/category'
 
@@ -20,6 +21,7 @@ export const POST = asHandler(async (req: NextRequest) => {
   if (!(await isAdmin())) throw unauthorized()
   const input = await parseBody(req, categoryCreateSchema)
   const category = await createCategory(input)
+  await notifyFrontendRevalidate()
   await writeAudit({
     action: 'category.create',
     entity: 'Category',

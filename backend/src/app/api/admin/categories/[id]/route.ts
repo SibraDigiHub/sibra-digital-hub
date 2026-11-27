@@ -4,6 +4,7 @@ import { NextRequest } from 'next/server'
 import { asHandler, json, parseBody, unauthorized } from '@/lib/api'
 import { isAdmin } from '@/lib/admin-auth'
 import { writeAudit } from '@/lib/audit'
+import { notifyFrontendRevalidate } from '@/services/frontend-revalidation'
 import { deleteCategory, updateCategory } from '@/services/category-service'
 import { categoryUpdateSchema } from '@/validators/category'
 
@@ -14,6 +15,7 @@ export const PATCH = asHandler(async (req: NextRequest, { params }: { params: Pr
   const { id } = await params
   const input = await parseBody(req, categoryUpdateSchema)
   const category = await updateCategory(id, input)
+  if (Object.keys(input).length > 0) await notifyFrontendRevalidate()
   await writeAudit({
     action: 'category.update',
     entity: 'Category',
@@ -29,6 +31,7 @@ export const DELETE = asHandler(async (req: NextRequest, { params }: { params: P
   if (!(await isAdmin())) throw unauthorized()
   const { id } = await params
   const removed = await deleteCategory(id)
+  await notifyFrontendRevalidate()
   await writeAudit({
     action: 'category.delete',
     entity: 'Category',

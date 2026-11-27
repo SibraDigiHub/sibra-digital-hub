@@ -52,6 +52,10 @@ const LICENSE_COPY: Record<License, string> = {
 export interface DetailState {
   slug: string
   product: Product | null
+  /** Server-resolved admin category label for the initial crawlable render. */
+  categoryLabel?: string
+  /** Active category URL, or the zone shop URL when its category is hidden. */
+  categoryPath?: string
   related: Product[]
   notFound: boolean
   error: boolean
@@ -114,7 +118,9 @@ export function ProductDetailView({
 
   // T10: live categories — breadcrumb label reflects admin-managed registry
   const zoneCats = useZoneCategories(data.product?.zone ?? storeZone ?? 'kids')
-  const categoryLabelText = data.product ? zoneCats.find((c) => c.slug === data.product?.category)?.label : undefined
+  const categoryLabelText = data.product
+    ? initial?.categoryLabel ?? zoneCats.find((c) => c.slug === data.product?.category)?.label
+    : undefined
 
   // T10: shared single fetch for the category registry
   useEffect(() => {
@@ -245,13 +251,27 @@ export function ProductDetailView({
 
   const product = data.product
   const related = data.related
+  const categoryPath = initial?.categoryPath ?? realCategoryPath(product.zone, product.category)
+  const showCategoryCrumb = categoryPath !== realShopPath(product.zone)
 
   const isKids = product.zone === 'kids'
   // T-V: the video's own YouTube frame leads the media list — video/watch
   // products show their real thumbnail here (and as the click-to-play
   // poster), never the default hero photo.
   const mediaImages = productMediaImages(product)
+  // Keep the original gallery image list for the UI and video poster.
   const images = mediaImages.length > 0 ? mediaImages : ['/images/products/kids-hero.png']
+  // JSON-LD requires absolute, valid HTTP(S) image URLs.
+  const schemaImages = images
+    .flatMap((image) => {
+      if (!image.trim()) return []
+      try {
+        const url = new URL(image, siteUrl())
+        return url.protocol === 'http:' || url.protocol === 'https:' ? [url.toString()] : []
+      } catch {
+        return []
+      }
+    })
   // T-V Feature B: the video renders via the click-to-play frame — the
   // source arrives from the server only after Play (raw URL never in page).
   const videoPreview = product.videoPreview ?? null
@@ -261,27 +281,31 @@ export function ProductDetailView({
     '@context': 'https://schema.org',
     '@type': 'Product',
     name: product.title,
-    // Media list — leads with the video's own frame for video products.
-    image: images,
+    // Media list — absolute URLs are required for robust Product markup.
+    ...(schemaImages.length > 0 ? { image: schemaImages } : {}),
     description: product.description,
     sku: product.slug,
     brand: { '@type': 'Brand', name: product.authorBrand },
-    category: product.category,
+    category: categoryLabelText ?? product.category,
     url: `${siteUrl()}${realProductPath(product.slug)}`,
     // Task 3: ONE offer = the visible international variant (USD) — the
     // server HTML is geo-neutral and crawlers/unknown locations always get
     // USD (owner decision). Never two currencies in the same markup.
-    offers: product.priceUsd > 0
-      ? [
-          {
-            '@type': 'Offer',
-            price: product.priceUsd,
-            priceCurrency: 'USD',
-            availability: 'https://schema.org/InStock',
-            url: `${siteUrl()}${realProductPath(product.slug)}`,
-          },
-        ]
-      : [],
+    // Direct checkout is unavailable when instantDownload is disabled;
+    // do not publish a misleading on-site Offer for marketplace-only items.
+    ...(product.priceUsd > 0 && product.instantDownload
+      ? {
+          offers: [
+            {
+              '@type': 'Offer',
+              price: product.priceUsd,
+              priceCurrency: 'USD',
+              availability: 'https://schema.org/InStock',
+              url: `${siteUrl()}${realProductPath(product.slug)}`,
+            },
+          ],
+        }
+      : {}),
     // Only specs that actually exist in the product data — never invented.
     additionalProperty: (
       [
@@ -330,30 +354,34 @@ export function ProductDetailView({
               Shop
             </button>
           )}
-          <ChevronRight className="size-3.5 shrink-0 text-muted-foreground" aria-hidden="true" />
-          {realLinks ? (
-            <a
-              href={realCategoryPath(product.zone, product.category)}
-              onClick={(e) => {
-                e.preventDefault()
-                playFx('pop')
-                navigate('shop', { zone: product.zone, category: product.category })
-              }}
-              className="font-semibold text-muted-foreground underline-offset-4 hover:text-foreground hover:underline"
-            >
-              {categoryLabelText ?? data.product.category}
-            </a>
-          ) : (
-            <button
-              type="button"
-              onClick={() => {
-                playFx('pop')
-                navigate('shop', { zone: product.zone, category: product.category })
-              }}
-              className="font-semibold text-muted-foreground underline-offset-4 hover:text-foreground hover:underline"
-            >
-              {categoryLabelText ?? data.product.category}
-            </button>
+          {showCategoryCrumb && (
+            <>
+              <ChevronRight className="size-3.5 shrink-0 text-muted-foreground" aria-hidden="true" />
+              {realLinks ? (
+                <a
+                  href={categoryPath}
+                  onClick={(e) => {
+                    e.preventDefault()
+                    playFx('pop')
+                    navigate('shop', { zone: product.zone, category: product.category })
+                  }}
+                  className="font-semibold text-muted-foreground underline-offset-4 hover:text-foreground hover:underline"
+                >
+                  {categoryLabelText ?? data.product.category}
+                </a>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => {
+                    playFx('pop')
+                    navigate('shop', { zone: product.zone, category: product.category })
+                  }}
+                  className="font-semibold text-muted-foreground underline-offset-4 hover:text-foreground hover:underline"
+                >
+                  {categoryLabelText ?? data.product.category}
+                </button>
+              )}
+            </>
           )}
           <ChevronRight className="size-3.5 shrink-0 text-muted-foreground" aria-hidden="true" />
           <span className="truncate text-muted-foreground">{product.title}</span>

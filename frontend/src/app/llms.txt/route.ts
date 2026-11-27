@@ -1,6 +1,6 @@
 import { SITE_NAME } from "@/lib/site";
 import { siteUrl } from "@/lib/site-url";
-import { getAllPublishedProducts, getCategories } from "@/lib/seo-data";
+import { getCategoriesStrict, getFeaturedProducts } from "@/lib/seo-data";
 import { REAL_LEGAL_PAGES } from "@/lib/real-routes";
 
 // ─────────────────────────────────────────────────────────────
@@ -31,24 +31,19 @@ const LEGAL_DESCRIPTIONS: Record<string, string> = {
 
 export async function GET(): Promise<Response> {
   const base = siteUrl();
-  const [products, categories] = await Promise.all([getAllPublishedProducts(), getCategories()]);
-
-  // Key products first (featured order), capped so the file stays short.
-  const keyProducts = [...products]
-    .sort((a, b) => Number(b.featured) - Number(a.featured) || a.sortOrder - b.sortOrder)
-    .slice(0, 10);
+  const [keyProducts, categories] = await Promise.all([getFeaturedProducts(10), getCategoriesStrict()]);
 
   const categoryLines = categories
     .map(
       (c) =>
-        `- [${c.label}](${base}/category/${c.zone}/${c.slug}): ${c.zone === "kids" ? "Kids zone" : "Creator hub"} category — instant digital downloads.`,
+        `- [${c.label}](${base}/category/${c.zone}/${c.slug}): Published products in the ${c.zone === "kids" ? "Kids zone" : "Creator hub"} category.`,
     )
     .join("\n");
 
   const productLines = keyProducts
     .map((p) => {
       const price = `India base price ₹${Math.round(p.priceInr)}; USD base price $${p.priceUsd.toFixed(2)}`;
-      return `- [${p.title}](${base}/product/${p.slug}): ${p.description.trim() || "Instant digital download"} — ${price}. International checkout may use a merchant-enabled local currency converted from the USD base price.`;
+      return `- [${p.title}](${base}/product/${p.slug}): ${p.description.trim() || "See the product page for details"} — ${price}. International checkout may use a merchant-enabled local currency converted from the USD base price.`;
     })
     .join("\n");
 
@@ -58,15 +53,16 @@ export async function GET(): Promise<Response> {
 
   const body = `# ${SITE_NAME}
 
-> Two worlds, one checkout: Digital Kidosphere (curated by Professor Sibra Naaz) for joyful kids' printables, and the Creator & Developer Hub for premium Canva templates, AI prompts, scripts & UI kits. Instant downloads — pay by card, UPI, net banking & more via Razorpay.
+> Two worlds, one store: Digital Kidosphere (curated by Professor Sibra Naaz) for kids' printables, and the Creator & Developer Hub for Canva templates, AI prompts, scripts & UI kits.
 
-Every product has its own crawlable page under ${base}/product/<slug>, and the catalog lives at ${base}/shop. Every product is an instant digital download.
+Every published product has its own crawlable page under ${base}/product/<slug>. Browse the Kids and Creator catalogs separately, or use the XML sitemap to discover all published product URLs.
 
 ## Main pages
 
 - [Gateway (home)](${base}/): 3D split gateway — choose the Kids or the Creator world to enter the hub.
 - [Kids zone — Digital Kidosphere](${base}/shop?zone=kids): Joyful kids' printables — coloring books, activity & puzzles, story e-books, ABCD & number tracing, flashcards & crafts, and parents' guides.
-- [Creator hub — Creator & Developer Hub](${base}/shop?zone=creator): Premium Canva templates, AI prompts, motion assets, scripts & automations, website UI kits and ATS resumes.
+- [Creator hub — Creator & Developer Hub](${base}/shop?zone=creator): Canva templates, AI prompts, motion assets, scripts & automations, website UI kits and ATS resumes.
+- [XML sitemap](${base}/sitemap.xml): Complete crawlable URL inventory, including published product pages.
 
 ## Categories
 
@@ -76,13 +72,11 @@ ${categoryLines}
 
 ${productLines}
 
-## Product format and fulfilment facts
+## Delivery and checkout
 
-- Kids' printables (coloring books, activity & puzzle packs, story e-books, ABCD & number tracing sheets, flashcards) ship as 300 DPI print-ready PDF interiors with 600 DPI digital cover files.
-- Creator-hub assets ship in the format listed on each product page: Canva template frameworks, structural AI prompt packs, production video scripts, ATS-compliant resume documents, and Next.js/PostgreSQL web application source code.
-- Every order is an automated instant download: the download link is emailed the moment payment is captured — no shipping, no waiting period.
-- Checkout runs on Razorpay and PayPal: UPI, cards, net banking and wallets for India; international cards and PayPal worldwide.
-- Prices: India uses INR base prices; international checkout uses USD base prices (or a merchant-enabled local currency converted from the USD base price).
+- The delivery method is product-specific and is described on its product page. Depending on the product settings, access may be a file download, protected watch access, or an external destination.
+- Direct checkout uses Razorpay where the merchant has enabled it and the visitor's country/currency is supported. Some products may provide marketplace purchase links instead.
+- Prices: India uses INR base prices; international checkout uses USD base prices or a merchant-enabled local currency converted from the USD base price.
 - Platform infrastructure: custom Next.js + Tailwind CSS frontend, PostgreSQL database, ImageKit CDN for image assets.
 
 ## Support and policies
