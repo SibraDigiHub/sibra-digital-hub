@@ -64,6 +64,9 @@ export default function ZoneStage(props: ZoneStageProps): JSX.Element {
   }
   const enteredRef = useRef(false)
   const clockStartRef = useRef<() => void>(() => undefined)
+  // Child effects run before this component's effect. Remember a fallback
+  // start request until the authoritative stage clock has been installed.
+  const clockRequestedRef = useRef(false)
   const propsRef = useRef(props)
   // Latest-props bridge — written in an effect (refs are not touched during render).
   useEffect(() => {
@@ -90,6 +93,7 @@ export default function ZoneStage(props: ZoneStageProps): JSX.Element {
     if (tl) clockStartRef.current()
   }, [])
   const startClock = useCallback(() => {
+    clockRequestedRef.current = true
     clockStartRef.current()
   }, [])
 
@@ -139,7 +143,10 @@ export default function ZoneStage(props: ZoneStageProps): JSX.Element {
       stage.tl.play(0)
     }
     clockStartRef.current = startClockNow
-    if (choreoTlRef.current) startClockNow()
+    // T1/T2 request the clock by registering their GSAP timeline; the T0
+    // CSS fallback requests it through startClock(). Both requests can arrive
+    // from child effects before this parent effect, so replay the request now.
+    if (clockRequestedRef.current || choreoTlRef.current) startClockNow()
 
     /** Full stop — kills every registered resource; idempotent on every path. */
     const stopFully = () => {

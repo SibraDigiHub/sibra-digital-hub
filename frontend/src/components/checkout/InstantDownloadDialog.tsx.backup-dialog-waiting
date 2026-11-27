@@ -810,7 +810,7 @@ export function InstantDownloadDialog({
           {step === 'razorpay' && (
             <>
               <DialogHeader>
-                <DialogTitle className="pr-6 text-left">Complete your payment</DialogTitle>
+                <DialogTitle className="pr-6 text-left">Verifying your payment</DialogTitle>
                 <DialogDescription className="text-left">
                   Order <span className="font-mono text-[11px]">{orderId}</span>
                   {displayAmount ? <> · total {displayAmount}</> : null}
