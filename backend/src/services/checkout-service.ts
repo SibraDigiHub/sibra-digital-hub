@@ -20,7 +20,7 @@ import { z } from 'zod'
 import type { Prisma } from '@prisma/client'
 import { ApiError } from '@/lib/api'
 import { db } from '@/lib/db'
-import { allowRepeatPurchase, internationalCheckoutEnabled, razorpayForeignCurrencies } from '@/config/env'
+import { internationalCheckoutEnabled, razorpayForeignCurrencies } from '@/config/env'
 import { formatMinor } from '@/lib/money'
 import { razorpayConfigured, createRazorpayOrder, fetchRazorpayOrder } from '@/lib/razorpay'
 import { gatewayConfigFromEnv, normalizeCountry, resolveGateway } from '@/services/gateway-routing'
@@ -28,6 +28,7 @@ import { publicOrderDTO } from '@/services/order-service'
 import { orderRepo, OrderWithProduct } from '@/repositories/order-repo'
 import { writeAudit, maskEmail } from '@/lib/audit'
 import { logger } from '@/lib/logger'
+import { assertNoActiveProductAccess } from '@/services/repeat-purchase'
 
 export const checkoutCreateSchema = z
   .object({
@@ -119,26 +120,6 @@ function withGateway(order: OrderWithProduct) {
     currency: order.currency,
     amountMinor: order.amountMinor,
     billingCountry: order.billingCountry,
-  }
-}
-
-/** Repeat-purchase guard (§2.3): a PAID, non-revoked order for the same email+product. */
-async function assertNotRepeatPurchase(
-  productId: string,
-  email: string,
-  tx: Prisma.TransactionClient | typeof db = db,
-): Promise<void> {
-  if (allowRepeatPurchase()) return
-  const existing = await tx.order.findFirst({
-    where: { productId, customerEmail: email, status: 'paid' },
-    select: { id: true },
-  })
-  if (existing) {
-    throw new ApiError(
-      409,
-      'You already own this product — check your inbox for the delivery email, or use "Resend my link" below.',
-      'REPEAT_PURCHASE',
-    )
   }
 }
 
@@ -313,7 +294,7 @@ export async function createCheckout(
 
   const email = input.customerEmail.toLowerCase()
   const order = await withCheckoutLock(email, async (tx) => {
-    await assertNotRepeatPurchase(product.id, email, tx)
+    await assertNoActiveProductAccess(product.id, email, product.deliveryMode, tx)
     const pending = await tx.order.count({ where: { customerEmail: email, status: 'pending' } })
     if (pending >= MAX_PENDING_PER_EMAIL) {
       throw new ApiError(429, 'Too many pending orders for this email. Complete a payment first.')

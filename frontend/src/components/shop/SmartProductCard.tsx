@@ -63,7 +63,7 @@ export function SmartProductCard({
 
   const rootRef = useRef<HTMLDivElement | null>(null)
   const tiltRef = useRef<HTMLDivElement | null>(null)
-  const navigationStartedRef = useRef(false)
+  const navigationAttemptAtRef = useRef(0)
 
   // T-V: the video's own YouTube frame LEADS the media list — a video
   // product shows its real thumbnail on the card, never the default
@@ -117,8 +117,10 @@ export function SmartProductCard({
   }
 
   const openDetail = () => {
-    if (navigationStartedRef.current) return
-    navigationStartedRef.current = true
+    // Suppress only an immediate double-click. A permanent latch can make
+    // the card unusable if a client-side route transition is interrupted.
+    if (Date.now() - navigationAttemptAtRef.current < 300) return
+    navigationAttemptAtRef.current = Date.now()
     // Use the mounted Next-router adapter on real routes (and the hash
     // router on the SPA). A full document reload made Kids card taps appear
     // unresponsive while the entire storefront booted again.

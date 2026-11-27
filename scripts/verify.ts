@@ -215,7 +215,7 @@ async function main(): Promise<void> {
 
   // 12 — both production builds (production-safe dummy env; boot guard fires at build time)
   results.push(
-    runCmd('build:frontend (production)', ['bash', '-c', `ALLOW_LOCAL_BACKEND_URL=true BACKEND_URL=http://127.0.0.1:3001 NEXT_PUBLIC_SITE_URL=http://localhost:3000 bun run build`], FE),
+    runCmd('build:frontend (production)', ['bash', '-c', `ALLOW_LOCAL_BACKEND_URL=true ALLOW_LOCAL_SITE_URL=true BACKEND_URL=http://127.0.0.1:3001 NEXT_PUBLIC_SITE_URL=http://localhost:3000 bun run build`], FE),
   )
   results.push(
     runCmd(

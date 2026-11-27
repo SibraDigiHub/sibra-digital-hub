@@ -122,7 +122,8 @@ export const POST = asHandler(async (req: NextRequest) => {
     })
     throw conflict('Payment amount does not match the order')
   }
-  if (payment.status && payment.status !== 'captured') {
+  // Fail closed: a missing status is not evidence of a captured payment.
+  if (payment.status !== 'captured') {
     throw conflict('Payment has not been captured yet')
   }
 

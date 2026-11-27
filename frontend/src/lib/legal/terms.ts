@@ -121,7 +121,7 @@ export const TERMS_PAGE: LegalPageData = {
       blocks: [
         {
           kind: 'p',
-          text: 'Direct purchases are charged in Indian Rupees (₹) through Razorpay for customers in India. Customers outside India are charged in US dollars (USD) through Razorpay Checkout — the exact USD total is shown at checkout before you pay. Prices in USD shown on product pages elsewhere are for marketplace guidance. Applicable taxes are included where indicated or added at checkout where required.',
+          text: 'Direct purchases are charged in Indian Rupees (₹) through Razorpay for customers in India. Customers outside India may be charged in a merchant-enabled local currency or in US dollars (USD) when local currency is unavailable. The exact currency and total are shown at checkout before you pay. Prices in USD shown on product pages elsewhere are the USD base price used to calculate eligible local-currency prices. Applicable taxes are included where indicated or added at checkout where required.',
         },
         {
           kind: 'p',

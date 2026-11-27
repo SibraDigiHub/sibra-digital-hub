@@ -32,7 +32,7 @@ interface MockPayment {
   order_id: string
   amount: number
   currency: string
-  status: string
+  status?: string
   method: string
   international: boolean
 }
@@ -80,7 +80,7 @@ Bun.serve({
         order_id: orderId,
         amount: Number(body.amount ?? order.amount),
         currency: String(body.currency ?? order.currency),
-        status: String(body.status ?? 'captured'),
+        ...(body.omitStatus === true ? {} : { status: String(body.status ?? 'captured') }),
         method: String(body.method ?? 'upi'),
         international: Boolean(body.international ?? false),
       }
