@@ -116,8 +116,18 @@ export function shopMetadata(zone: string, category?: string | null): Metadata {
   }
 }
 
-export function categoryMetadata(zone: string, category: string): Metadata {
-  return shopMetadata(zone, category)
+export function categoryMetadata(zone: string, categoryLabel: string, categorySlug: string): Metadata {
+  const zoneName = zone === 'creator' ? ZONE_NAMES.creator : ZONE_NAMES.kids
+  const title = clamp(`${categoryLabel} — ${zoneName}`, 60)
+  const description = clamp(
+    `Browse ${categoryLabel} in the ${zoneName} — instant digital downloads with secure Razorpay checkout (UPI, cards, net banking).`,
+    155,
+  )
+  return {
+    title,
+    description,
+    ...baseOg(null, title, description, realCategoryPath(zone, categorySlug)),
+  }
 }
 
 export function legalMetadata(page: string, label: string): Metadata {
