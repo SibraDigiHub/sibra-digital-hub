@@ -1,7 +1,11 @@
 import type { MetadataRoute } from 'next'
 import { siteUrl } from '@/lib/site-url'
-import { getAllPublishedProducts, getCategories } from '@/lib/seo-data'
+import { getAllPublishedProducts, getCategoriesStrict } from '@/lib/seo-data'
 import { REAL_LEGAL_PAGES } from '@/lib/real-routes'
+
+// Refresh the sitemap on the same short cadence as its tagged catalog fetches.
+// Product mutations also invalidate the shared tag through /api/revalidate.
+export const revalidate = 60
 
 // Generated sitemap — home, shop (both zones), every real category page,
 // EVERY published product URL (with its real lastModified) and the real
@@ -10,7 +14,7 @@ import { REAL_LEGAL_PAGES } from '@/lib/real-routes'
 // (admin/thank-you/download/watch/reset-password) are deliberately absent.
 export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
   const base = siteUrl()
-  const [products, categories] = await Promise.all([getAllPublishedProducts(), getCategories()])
+  const [products, categories] = await Promise.all([getAllPublishedProducts(), getCategoriesStrict()])
 
   const lastProductEdit = products.reduce<string | null>(
     (latest, p) => (!latest || p.updatedAt > latest ? p.updatedAt : latest),
@@ -44,6 +48,13 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
 
   for (const page of REAL_LEGAL_PAGES) {
     entries.push({ url: `${base}/${page}`, lastModified, changeFrequency: 'monthly', priority: 0.5 })
+  }
+
+  // Google accepts at most 50,000 URLs in one sitemap. Fail visibly rather
+  // than emitting an invalid sitemap if the catalog ever reaches that scale;
+  // split into an index + child sitemaps before approaching this threshold.
+  if (entries.length > 50_000) {
+    throw new Error('Sitemap exceeds the 50,000 URL limit; split it into indexed child sitemaps.')
   }
 
   return entries
