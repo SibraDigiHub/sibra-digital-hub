@@ -8,7 +8,7 @@ import type { Metadata } from 'next'
 import { notFound } from 'next/navigation'
 import RealRouteShell from '@/components/real/RealRouteShell'
 import { getCatalogProducts, getCategories } from '@/lib/seo-data'
-import { breadcrumbJsonLd, catalogItemListJsonLd, shopMetadata } from '@/lib/seo-metadata'
+import { breadcrumbJsonLd, catalogItemListJsonLd, categoryMetadata, shopMetadata } from '@/lib/seo-metadata'
 import { catalogKey, realShopPath } from '@/lib/real-routes'
 import { jsonLdString } from '@/lib/json-ld'
 import type { Zone } from '@/types/marketplace'
@@ -29,7 +29,7 @@ export async function generateMetadata({ params }: CategoryProps): Promise<Metad
   const { zone, category } = await params
   const resolved = await resolveCategory(zone, category)
   if (!resolved) return shopMetadata('kids', null)
-  return shopMetadata(resolved.zone, resolved.slug)
+  return categoryMetadata(resolved.zone, resolved.label, resolved.slug)
 }
 
 export default async function CategoryPage({ params }: CategoryProps) {

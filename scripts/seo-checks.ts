@@ -34,6 +34,7 @@ async function get(path: string): Promise<{ status: number; html: string }> {
 interface TagChecks {
   url: string
   expectedTitlePart?: string
+  expectedCanonical?: string
   expectH1?: boolean
   expectBodyText?: string[]
   expectFooter?: boolean
@@ -55,6 +56,9 @@ function assertHead(html: string, t: TagChecks): void {
   if (canonical) {
     ok(/^https?:\/\//.test(canonical[1]), `${t.url}: canonical absolute`, canonical[1])
     ok(!canonical[1].includes('#'), `${t.url}: canonical has no hash`, canonical[1])
+    if (t.expectedCanonical) {
+      ok(canonical[1] === `${BASE}${t.expectedCanonical}`, `${t.url}: canonical matches its real route`, canonical[1])
+    }
   }
 
   for (const [label, re] of [
@@ -149,6 +153,7 @@ async function main(): Promise<void> {
   assertHead(r2.html, {
     url: '/shop?zone=kids',
     expectedTitlePart: 'Digital Kidosphere',
+    expectedCanonical: '/shop?zone=kids',
     expectH1: true,
     expectBodyText: ['Baby Animals Coloring Book'],
     expectFooter: true,
@@ -158,6 +163,7 @@ async function main(): Promise<void> {
   ok(r2c.status === 200, '/category/kids/coloring-books: HTTP 200')
   assertHead(r2c.html, {
     url: '/category/kids/coloring-books',
+    expectedCanonical: '/category/kids/coloring-books',
     expectH1: true,
     expectFooter: true,
   })
@@ -184,7 +190,7 @@ async function main(): Promise<void> {
   const skuOk = r1.html.includes('"sku":"baby-animals-coloring-book"')
   ok(skuOk, `${productPath}: Product.sku = slug`)
   const offerPrices = [...r1.html.matchAll(/"price":([\d.]+),"priceCurrency":"(\w+)"/g)].map((m) => m[2])
-  ok(offerPrices.includes('INR') && offerPrices.includes('USD'), `${productPath}: INR + USD offers`, offerPrices.join(','))
+  ok(offerPrices.length === 1 && offerPrices[0] === 'USD', `${productPath}: one geo-neutral USD offer (per ProductDetailView strategy)`, offerPrices.join(','))
   assertJsonLd(r2.html, {
     url: '/shop?zone=kids',
     types: ['BreadcrumbList', 'ItemList'],
@@ -200,6 +206,7 @@ async function main(): Promise<void> {
   ok(slugs.length >= 25, `sitemap: product URLs present (${slugs.length})`)
   ok(slugs.includes('baby-animals-coloring-book'), 'sitemap: contains the probe product')
   ok(!rs.html.includes('/admin') && !rs.html.includes('thank-you') && !rs.html.includes('/download'), 'sitemap: no private URLs')
+  ok(!rs.html.includes(`<loc>${BASE}/shop</loc>`), 'sitemap: omits /shop duplicate of the default Kids catalog')
   ok(!rs.html.includes('localhost') || BASE.includes('localhost'), 'sitemap: no localhost unless test base')
   const catUrls = [...rs.html.matchAll(/<loc>[^<]*\/category\/([^<]+)<\/loc>/g)].map((m) => m[1])
   ok(catUrls.length >= 12, `sitemap: category URLs present (${catUrls.length})`)
@@ -220,6 +227,8 @@ async function main(): Promise<void> {
   const llmsUrls = [...rl.html.matchAll(/\((https?:\/\/[^)]+)\)/g)].map((m) => m[1])
   ok(llmsUrls.length >= 10, `llms.txt: page links present (${llmsUrls.length})`)
   ok(!llmsUrls.some((u) => u.includes('/admin') || u.includes('/api')), 'llms.txt: no private URLs')
+  ok(!rl.html.includes('/#/'), 'llms.txt: no hash-only, non-crawlable page links')
+  ok(!rl.html.includes('/shop): All products across both zones'), 'llms.txt: does not mislabel the Kids-default /shop route as a universal catalog')
   // sample llms.txt URLs return 200
   const sample = llmsUrls.filter((u) => u.includes('/product/') || u.includes('/category/')).slice(0, 5)
   for (const u of sample) {

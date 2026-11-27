@@ -4,7 +4,7 @@ import { Cinzel, Playfair_Display, Plus_Jakarta_Sans, JetBrains_Mono, Baloo_2 } 
 import "./globals.css";
 import { Toaster } from "@/components/ui/toaster";
 import HashRedirect from "@/components/real/HashRedirect";
-import { siteUrl } from "@/lib/site-url";
+import { SITE_FALLBACK_URL, siteUrl } from "@/lib/site-url";
 
 const cinzel = Cinzel({
   variable: "--font-cinzel",
@@ -67,6 +67,9 @@ const baloo = Baloo_2({
 // NEXT_PUBLIC_SITE_URL env pin → siteUrl() localhost fallback.
 async function metadataOrigin(): Promise<string> {
   const envUrl = siteUrl();
+  // A configured production origin is authoritative. Do not let a Vercel
+  // preview/request Host turn canonical and Open Graph URLs into preview URLs.
+  if (envUrl !== SITE_FALLBACK_URL) return envUrl;
   try {
     const h = await headers();
     const forwarded = h.get("x-forwarded-host")?.split(",")[0]?.trim();
