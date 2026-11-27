@@ -227,7 +227,12 @@ export async function listCatalog(query: ProductListQuery, req: NextRequest) {
     ]
   }
 
-  const products = await productRepo.list({ where, orderBy: buildOrderBy(query.sort), take: query.limit })
+  const products = await productRepo.list({
+    where,
+    orderBy: buildOrderBy(query.sort),
+    take: query.limit,
+    skip: query.offset,
+  })
   return products.map((p) => (admin ? toProductDTO(p) : toPublicProductDTO(p)))
 }
 

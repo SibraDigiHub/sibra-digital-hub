@@ -67,6 +67,9 @@ export const productListQuerySchema = z.object({
   featured: z.string().optional(),
   slug: z.string().optional(),
   limit: z.coerce.number().int().min(1).max(200).default(100),
+  // Public catalog pagination for large sitemap/catalog reads. Keep the
+  // page size capped; offset is bounded to avoid unbounded DB scans.
+  offset: z.coerce.number().int().min(0).max(1_000_000).default(0),
 })
 
 export type ProductListQuery = z.infer<typeof productListQuerySchema>

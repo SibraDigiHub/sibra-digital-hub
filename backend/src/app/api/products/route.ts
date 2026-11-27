@@ -6,6 +6,7 @@ import { hasAdminSessionCookie } from '@/lib/admin-auth'
 import { requireAdmin } from '@/lib/auth/session'
 import { ensureVisitorId, eventContext, logEvent } from '@/lib/activity'
 import { writeAudit } from '@/lib/audit'
+import { notifyFrontendRevalidate } from '@/services/frontend-revalidation'
 import { productRepo } from '@/repositories/product-repo'
 import { createProduct, listCatalog, toPublicProductDTO } from '@/services/product-service'
 import { productInputSchema, productListQuerySchema } from '@/validators/product'
@@ -71,6 +72,10 @@ export const POST = asHandler(async (req: NextRequest) => {
   await requireAdmin(req)
   const input = await parseBody(req, productInputSchema)
   const product = await createProduct(input)
+  // Drafts are not public; only invalidate SEO surfaces when a published
+  // product enters the public catalog. The helper is best-effort and never
+  // rolls back or fails the already-committed product creation.
+  if (product.status === 'published') await notifyFrontendRevalidate()
   await writeAudit({ action: 'product.create', entity: 'product', entityId: product.id, label: product.title, req })
   return json({ product }, { status: 201 })
 })

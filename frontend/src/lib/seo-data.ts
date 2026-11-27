@@ -8,8 +8,8 @@
 // components only).
 //
 // Caching: ISR with a short revalidate plus a shared fetch tag so the
-// whole SEO surface can be revalidated after admin edits with a single
-// `revalidateTag(REAL_ROUTES_TAG)` call from a future admin webhook.
+// whole SEO surface is revalidated after published-product mutations via
+// the authenticated backend-to-frontend /api/revalidate endpoint.
 // ═══════════════════════════════════════════════════════════
 
 // NOTE: imported by server components only — reads INTERNAL_API_KEY,
@@ -104,10 +104,60 @@ export async function getCategories(): Promise<{ zone: string; slug: string; lab
   return data?.categories ?? []
 }
 
-/** Every published product (sitemap + llms.txt). The catalog API caps
- *  limit at 200 — the sitemap lists up to that many products. */
-export async function getAllPublishedProducts(): Promise<Product[]> {
-  const data = await backendGet<{ products: ProductRow[] }>('/api/products?limit=200')
-  if (!data?.products) return []
+/** Strict category registry for SEO documents that must not silently omit URLs. */
+export async function getCategoriesStrict(): Promise<{ zone: string; slug: string; label: string }[]> {
+  const data = await backendGet<{ categories: { zone: string; slug: string; label: string }[] }>(
+    '/api/categories',
+  )
+  if (
+    !data ||
+    !Array.isArray(data.categories) ||
+    !data.categories.every(
+      (category) =>
+        category &&
+        typeof category.zone === 'string' &&
+        typeof category.slug === 'string' &&
+        typeof category.label === 'string',
+    )
+  ) {
+    throw new Error('Unable to load the complete category registry for SEO discovery')
+  }
+  return data.categories
+}
+
+/** Small featured-first list for the concise llms.txt overview. */
+export async function getFeaturedProducts(limit = 10): Promise<Product[]> {
+  const safeLimit = Math.max(1, Math.min(50, Math.trunc(limit) || 10))
+  const data = await backendGet<{ products: ProductRow[] }>(
+    `/api/products?limit=${safeLimit}&sort=featured`,
+  )
+  if (!data || !Array.isArray(data.products)) {
+    throw new Error('Unable to load featured products for llms.txt')
+  }
   return data.products.map(toProduct)
+}
+
+/** Every published product for the sitemap, read in bounded pages.
+ *  The public API caps each page at 200; offset pagination prevents newer
+ *  catalogs from silently truncating at the first 200 products. The stable
+ *  newest/id ordering keeps page boundaries deterministic between requests. */
+export async function getAllPublishedProducts(): Promise<Product[]> {
+  const pageSize = 200
+  const products: Product[] = []
+
+  for (let offset = 0; ; offset += pageSize) {
+    const data = await backendGet<{ products: ProductRow[] }>(
+      `/api/products?limit=${pageSize}&offset=${offset}&sort=newest`,
+    )
+    // Never publish a deceptively incomplete sitemap on an API
+    // failure. Let the route fail so crawlers can retry; the last good cache
+    // remains preferable to a successful sitemap that drops every product.
+    if (!data || !Array.isArray(data.products)) {
+      throw new Error(`Unable to load published products for SEO discovery (offset ${offset})`)
+    }
+
+    const page = data.products.map(toProduct)
+    products.push(...page)
+    if (page.length < pageSize) return products
+  }
 }

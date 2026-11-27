@@ -8,6 +8,7 @@ export type ProductListArgs = {
   where: Prisma.ProductWhereInput
   orderBy: Prisma.ProductOrderByWithRelationInput[]
   take: number
+  skip?: number
 }
 
 export const productRepo = {
@@ -15,8 +16,8 @@ export const productRepo = {
     return db.product.findFirst({ where: status ? { slug, status } : { slug } })
   },
 
-  list({ where, orderBy, take }: ProductListArgs) {
-    return db.product.findMany({ where, orderBy, take })
+  list({ where, orderBy, take, skip }: ProductListArgs) {
+    return db.product.findMany({ where, orderBy, take, ...(skip ? { skip } : {}) })
   },
 
   async slugExists(slug: string) {
