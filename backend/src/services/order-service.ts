@@ -10,7 +10,7 @@ import { orderRepo, ORDER_PRODUCT_INCLUDE, OrderWithProduct } from '@/repositori
 import { productRepo } from '@/repositories/product-repo'
 import { razorpayConfigured, createRazorpayOrder } from '@/lib/razorpay'
 import { generateToken } from '@/lib/delivery'
-import { downloadTtlHours, revokeOnRefund, allowRepeatPurchase } from '@/config/env'
+import { downloadTtlHours, revokeOnRefund } from '@/config/env'
 import { sendDeliveryEmail, sendWatchDeliveryEmail, emailDemoMode } from '@/lib/email'
 import { sendPaymentAlert } from '@/lib/admin-alerts'
 import { logEvent } from '@/lib/activity'
@@ -18,6 +18,7 @@ import { writeAudit, maskEmail } from '@/lib/audit'
 import { mintGrantForOrder } from '@/services/watch-service'
 import { db } from '@/lib/db'
 import { formatMinor, orderExpectedMinor } from '@/lib/money'
+import { assertNoActiveProductAccess } from '@/services/repeat-purchase'
 
 export const createOrderSchema = z.object({
   productId: z.string().min(1),
@@ -57,19 +58,7 @@ export async function createOrder(input: CreateOrderInput, visitorCookie: string
   // is enforced under a per-email advisory lock, not just app-level checks.
   const order = await db.$transaction(async (tx) => {
     await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${email})::bigint)`
-    if (!allowRepeatPurchase()) {
-      const existing = await tx.order.findFirst({
-        where: { productId: product.id, customerEmail: email, status: 'paid' },
-        select: { id: true },
-      })
-      if (existing) {
-        throw new ApiError(
-          409,
-          'You already own this product — check your inbox for the delivery email, or use "Resend my link" below.',
-          'REPEAT_PURCHASE',
-        )
-      }
-    }
+    await assertNoActiveProductAccess(product.id, email, product.deliveryMode, tx)
     return tx.order.create({
       data: {
         productId: product.id,

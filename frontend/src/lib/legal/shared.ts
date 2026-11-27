@@ -14,10 +14,10 @@
 import type { LegalPageId } from './types'
 
 /** The day this legal content was published (single constant). */
-export const LEGAL_LAST_UPDATED = '2026-11-16'
+export const LEGAL_LAST_UPDATED = '2026-11-28'
 
 /** Content version shown in the hero chip. */
-export const LEGAL_VERSION = '2.3'
+export const LEGAL_VERSION = '2.4'
 
 export const LEGAL_PAGE_ORDER: LegalPageId[] = [
   'about',

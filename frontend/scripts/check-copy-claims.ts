@@ -13,8 +13,9 @@
 //     (DOWNLOAD_TTL_HOURS / DOWNLOAD_MAX_DEFAULT, parsed from env.ts)
 //   • "guaranteed", "worldwide" marketing language
 //   • Payhip/Gumroad described as OUR payment gateway (they are
-//     external marketplaces; Razorpay/PayPal are the gateways)
-//   • Razorpay described as international/worldwide (India-only)
+//     external marketplaces; Razorpay is the active direct-payment gateway)
+//   • Razorpay described as worldwide (merchant-enabled country/currency
+//     coverage is limited; universal availability must not be claimed)
 //   • demo/seed testimonials presented as "verified"
 //
 // KNOWN ISSUES are pre-existing, documented copy bugs (docs/LEGAL_PAGES.md
@@ -56,14 +57,13 @@ const SEED_ONLY = (file: string) => file.includes('backend/src/lib/seed-data.ts'
 const RULES: Rule[] = [
   { id: 'never-expires', pattern: /never\s+expire|no\s+expiry|unlimited\s+downloads|lifetime\s+access/i, applies: ALL_FILES, explain: 'download links expire (48 h / 5 downloads by default) — this promise is false' },
   { id: 'guaranteed', pattern: /\bguaranteed\b/i, applies: ALL_FILES, explain: 'unqualified guarantee — remove or qualify legally' },
-  { id: 'worldwide', pattern: /world\s*-?\s*wide/i, applies: ALL_FILES, explain: 'payment coverage is Razorpay (India) + PayPal (international), not "worldwide"' },
+  { id: 'worldwide', pattern: /world\s*-?\s*wide/i, applies: ALL_FILES, explain: 'payment coverage is limited to the countries/currencies enabled by the merchant, not universal' },
   { id: 'download-window-number', pattern: /(?:valid|link|download)[^\n]{0,60}?(?:\b(\d+)\s*(?:hours|hrs)\b|\b(\d+)h\b)|(?:\b(\d+)\s*(?:hours|hrs)\b|\b(\d+)h\b)[^\n]{0,60}?(?:valid|link|download)/i, applies: ALL_FILES, explain: 'download-window number must equal DOWNLOAD_TTL_HOURS' },
   { id: 'download-count-number', pattern: /\b(\d+)\s+(?:full\s+)?downloads\b/i, applies: ALL_FILES, explain: 'download count must equal DOWNLOAD_MAX_DEFAULT' },
   { id: 'marketplace-as-gateway', pattern: /(?:payhip|gumroad)[^\n]{0,80}(?:gateway|payment method|pay (?:by|via|with) )|(?:gateway|payment method|pay (?:by|via|with) )[^\n]{0,80}(?:payhip|gumroad)/i, applies: ALL_FILES, explain: 'Payhip/Gumroad are external marketplaces, not this site\'s payment gateways' },
-  // Razorpay described AS international — but the correct split copy
-  // ("Razorpay (India) … PayPal (international)") co-attributes India on
-  // the same line; that line-level exclusion happens in the scan loop.
-  { id: 'razorpay-international', pattern: /razorpay[^\n]{0,80}(?:worldwide|global|international)|(?:worldwide|global|international)[^\n]{0,80}razorpay/i, applies: ALL_FILES, explain: 'Razorpay is the India gateway; international payments go through PayPal' },
+  // Razorpay supports India plus merchant-enabled international
+  // currencies; only an unqualified worldwide/global claim is inaccurate.
+  { id: 'razorpay-worldwide', pattern: /razorpay[^\n]{0,80}(?:worldwide|global)|(?:worldwide|global)[^\n]{0,80}razorpay/i, applies: ALL_FILES, explain: 'Razorpay is not universally available worldwide' },
   { id: 'seed-verified-testimonial', pattern: /verified\s*:\s*true/i, applies: SEED_ONLY, explain: 'demo/seed review data must not be presented as verified purchases (verified:false is the correct seeded posture)' },
 ]
 
@@ -138,12 +138,9 @@ function main(): void {
         if (rule.id === 'download-count-number') {
           if (Number(m[1]) === maxDownloads) continue
         }
-        // A line is a violation only when it claims international/worldwide
-        // reach FOR Razorpay without the correct split construction. Correct
-        // split copy ("Razorpay (India) … PayPal (international)" /
-        // "…via Razorpay; international: PayPal") always co-mentions either
-        // India or PayPal on the same line — those lines are skipped.
-        if (rule.id === 'razorpay-international' && (/india/i.test(text) || /paypal/i.test(text))) continue
+        // A disclaimer such as "not automatic or guaranteed" is the
+        // opposite of a marketing guarantee and must not fail this gate.
+        if (rule.id === 'guaranteed' && /\bnot\s+(?:automatic\s+or\s+)?guaranteed\b/i.test(text)) continue
         const v: Violation = { file: rel, line, rule: rule.id, text: text.trim().slice(0, 120), known: false }
         const known = isKnown(rel, rule.id)
         if (known) {

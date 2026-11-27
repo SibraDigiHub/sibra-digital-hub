@@ -72,6 +72,7 @@ async function waitMockReady(): Promise<void> {
 
 let testProduct: { id: string } | null = null
 const createdOrders: string[] = []
+const createdWatchProducts: string[] = []
 
 beforeAll(async () => {
   // Audit guard: the workspace root .env leaks a SQLite file: DATABASE_URL
@@ -98,7 +99,7 @@ beforeAll(async () => {
   // Test hygiene: clear the checkout rate-limit buckets so repeated test
   // runs never trip the 10-per-15-min IP limit.
   await db.rateLimit.deleteMany({ where: { key: { startsWith: 'checkout:' } } }).catch(() => undefined)
-  testProduct = await db.product.findFirst({ where: { status: 'published', instantDownload: true }, select: { id: true } })
+  testProduct = await db.product.findFirst({ where: { status: 'published', instantDownload: true, deliveryMode: 'file' }, select: { id: true } })
 })
 
 afterAll(async () => {
@@ -110,6 +111,10 @@ afterAll(async () => {
   ).map((o) => o.id)
   const allIds = [...new Set([...createdOrders, ...leftoverIds])]
   await db.order.deleteMany({ where: { id: { in: allIds } } })
+  // Watch repeat-purchase tests create isolated products; orders are removed first.
+  if (createdWatchProducts.length) {
+    await db.product.deleteMany({ where: { id: { in: createdWatchProducts } } })
+  }
   await db.emailLog.deleteMany({ where: { orderId: { in: allIds } } }).catch(() => undefined)
   // IdempotencyKey rows are NOT FK-linked to orders (standalone replay
   // cache) — deleting the orders above leaves them behind, so the suite
@@ -131,6 +136,62 @@ afterAll(async () => {
 
 async function trackOrder(orderId: string): Promise<void> {
   createdOrders.push(orderId)
+}
+
+/** Create an isolated published watch product so these tests never depend
+ * on catalog contents in the dedicated test database. */
+async function createWatchRepeatPurchaseFixture(
+  label: string,
+  grantOptions: { expiresAt?: Date; revokedAt?: Date | null; lockedAt?: Date | null; preview?: boolean } = {},
+) {
+  const suffix = crypto.randomUUID()
+  const product = await db.product.create({
+    data: {
+      title: `Watch Repeat Test ${label}`,
+      slug: `watch-repeat-${label}-${suffix}`,
+      status: 'published',
+      deliveryMode: 'watch',
+      instantDownload: false,
+      fullVideoUrl: 'https://www.youtube.com/watch?v=dQw4w9WgXcQ',
+    },
+  })
+  createdWatchProducts.push(product.id)
+
+  const email = `watch-repeat-${label}-${crypto.randomUUID()}@sibra.local`
+  const order = await db.order.create({
+    data: {
+      productId: product.id,
+      customerName: 'Watch Repeat Test',
+      customerEmail: email,
+      amountInr: 499,
+      status: 'paid',
+      gateway: 'razorpay',
+      currency: 'INR',
+      amountMinor: 49900,
+    },
+  })
+  await trackOrder(order.id)
+  await db.watchGrant.create({
+    data: {
+      orderId: order.id,
+      tokenHash: hashToken(`watch-repeat-${crypto.randomUUID()}`),
+      expiresAt: grantOptions.expiresAt ?? new Date(Date.now() + 60 * 60 * 1000),
+      revokedAt: grantOptions.revokedAt ?? null,
+      lockedAt: grantOptions.lockedAt ?? null,
+      preview: grantOptions.preview ?? false,
+    },
+  })
+  return { productId: product.id, email }
+}
+
+async function checkWatchRepeatPurchase(productId: string, email: string): Promise<string | null> {
+  const { assertNoActiveProductAccess } = await import('@/services/repeat-purchase')
+  try {
+    await db.$transaction((tx) => assertNoActiveProductAccess(productId, email, 'watch', tx))
+    return null
+  } catch (error) {
+    return (error as { code?: string }).code ?? 'UNEXPECTED_ERROR'
+  }
 }
 
 /** Fulfil an order through the shared fulfilOrder() (demo-pay answers 409
@@ -407,6 +468,125 @@ describe('checkout HTTP contract', () => {
     expect(JSON.stringify(dto)).not.toContain('deliverable')
   })
 
+  /** Create a real local checkout, attach a mock gateway payment, and call
+   *  the browser verification route with the checkout claim + valid HMAC.
+   *  The mock can deliberately omit status to exercise fail-closed behavior.
+   */
+  async function verifyMockCheckoutPayment(
+    label: string,
+    options: { status?: 'captured' | 'authorized' | 'failed'; omitStatus?: boolean } = {},
+  ) {
+    if (!testProduct) throw new Error('no published instant-download product in the dev DB')
+    await db.rateLimit.deleteMany({ where: { key: { startsWith: 'checkout:' } } })
+    await db.rateLimit.deleteMany({ where: { key: { startsWith: 'razorpay:verify:' } } })
+
+    const create = await api('/api/checkout/create', {
+      method: 'POST',
+      headers: { 'Idempotency-Key': `audit-verify-${crypto.randomUUID()}` },
+      body: JSON.stringify({
+        productId: testProduct.id,
+        customerName: `Verify ${label}`,
+        customerEmail: `verify-${label}-${crypto.randomUUID()}@sibra.local`,
+        country: 'IN',
+        consent: true,
+      }),
+    })
+    expect(create.status).toBe(201)
+    const orderId = (create.body.order as { id: string }).id
+    await trackOrder(orderId)
+    const gatewayOrder = create.body.razorpay as { orderId: string; amount: number; currency: string }
+    const claimValue = /__Host-sdh_claim=([^;]+)/.exec(create.headers.get('set-cookie') ?? '')?.[1] ?? ''
+    expect(gatewayOrder.orderId).toStartWith('order_mock_')
+    expect(claimValue).not.toBe('')
+
+    const mockPaymentResponse = await fetch(`${MOCK_BASE}/__mock__/pay`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        orderId: gatewayOrder.orderId,
+        amount: gatewayOrder.amount,
+        currency: gatewayOrder.currency,
+        ...(options.status ? { status: options.status } : {}),
+        ...(options.omitStatus ? { omitStatus: true } : {}),
+      }),
+    })
+    expect(mockPaymentResponse.status).toBe(200)
+    const payment = (await mockPaymentResponse.json()) as { id: string; status?: string }
+    const secret = process.env.RAZORPAY_KEY_SECRET ?? ''
+    expect(secret.length).toBeGreaterThan(0)
+    const signature = crypto
+      .createHmac('sha256', secret)
+      .update(`${gatewayOrder.orderId}|${payment.id}`)
+      .digest('hex')
+
+    const verification = await api('/api/razorpay/verify', {
+      method: 'POST',
+      headers: { cookie: `__Host-sdh_claim=${claimValue}` },
+      body: JSON.stringify({
+        razorpayOrderId: gatewayOrder.orderId,
+        razorpayPaymentId: payment.id,
+        razorpaySignature: signature,
+        orderId,
+      }),
+    })
+    return { verification, orderId, payment }
+  }
+
+  test('Razorpay verify: captured payment fulfils the order and issues delivery access', async () => {
+    const { verification, orderId, payment } = await verifyMockCheckoutPayment('captured', { status: 'captured' })
+    expect(verification.status).toBe(200)
+    expect(verification.body.ok).toBe(true)
+    expect(typeof verification.body.downloadUrl).toBe('string')
+    const row = await db.order.findUnique({
+      where: { id: orderId },
+      select: { status: true, downloadTokenHash: true, tokenExpiresAt: true, razorpayPaymentId: true },
+    })
+    expect(row?.status).toBe('paid')
+    expect(row?.downloadTokenHash).not.toBeNull()
+    expect(row?.tokenExpiresAt).not.toBeNull()
+    expect(row?.razorpayPaymentId).toBe(payment.id)
+  })
+
+  test('Razorpay verify: authorized payment stays pending and grants no delivery access', async () => {
+    const { verification, orderId } = await verifyMockCheckoutPayment('authorized', { status: 'authorized' })
+    expect(verification.status).toBe(409)
+    const row = await db.order.findUnique({
+      where: { id: orderId },
+      select: { status: true, downloadTokenHash: true, tokenExpiresAt: true, razorpayPaymentId: true },
+    })
+    expect(row?.status).toBe('pending')
+    expect(row?.downloadTokenHash).toBeNull()
+    expect(row?.tokenExpiresAt).toBeNull()
+    expect(row?.razorpayPaymentId).toBeNull()
+  })
+
+  test('Razorpay verify: failed payment stays pending and grants no delivery access', async () => {
+    const { verification, orderId } = await verifyMockCheckoutPayment('failed', { status: 'failed' })
+    expect(verification.status).toBe(409)
+    const row = await db.order.findUnique({
+      where: { id: orderId },
+      select: { status: true, downloadTokenHash: true, tokenExpiresAt: true, razorpayPaymentId: true },
+    })
+    expect(row?.status).toBe('pending')
+    expect(row?.downloadTokenHash).toBeNull()
+    expect(row?.tokenExpiresAt).toBeNull()
+    expect(row?.razorpayPaymentId).toBeNull()
+  })
+
+  test('Razorpay verify: missing payment status fails closed and grants no delivery access', async () => {
+    const { verification, orderId, payment } = await verifyMockCheckoutPayment('missing-status', { omitStatus: true })
+    expect(payment.status).toBeUndefined()
+    expect(verification.status).toBe(409)
+    const row = await db.order.findUnique({
+      where: { id: orderId },
+      select: { status: true, downloadTokenHash: true, tokenExpiresAt: true, razorpayPaymentId: true },
+    })
+    expect(row?.status).toBe('pending')
+    expect(row?.downloadTokenHash).toBeNull()
+    expect(row?.tokenExpiresAt).toBeNull()
+    expect(row?.razorpayPaymentId).toBeNull()
+  })
+
   test('webhooks reject unverified deliveries with 400; the removed PayPal webhook route is gone', async () => {
     const rzp = await fetch(`${BASE}/api/razorpay/webhook`, {
       method: 'POST',
@@ -617,7 +797,6 @@ describe('checkout concurrency (re-audit B4)', () => {
 
   test('repeat purchase is enforced under concurrency (409 REPEAT_PURCHASE for every parallel create)', async () => {
     if (!testProduct) throw new Error('no product')
-    const { ApiError } = await import('@/lib/api')
     const { createCheckout } = await import('@/services/checkout-service')
     const email = `repeat-${crypto.randomUUID()}@sibra.local`
     const paid = await db.order.create({
@@ -627,6 +806,8 @@ describe('checkout concurrency (re-audit B4)', () => {
         customerEmail: email,
         amountInr: 499,
         status: 'paid',
+        downloadTokenHash: hashToken(`active-repeat-test-${crypto.randomUUID()}`),
+        tokenExpiresAt: new Date(Date.now() + 60 * 60 * 1000),
         gateway: 'razorpay',
         currency: 'INR',
         amountMinor: 49900,
@@ -651,6 +832,138 @@ describe('checkout concurrency (re-audit B4)', () => {
     // Not a single extra order slipped through the check-then-act window.
     const orders = await db.order.findMany({ where: { customerEmail: email } })
     expect(orders).toHaveLength(1)
+  })
+
+  test('expired download access allows the same email to purchase the product again', async () => {
+    if (!testProduct) throw new Error('no product')
+    const { createCheckout } = await import('@/services/checkout-service')
+    const email = `expired-repeat-${crypto.randomUUID()}@sibra.local`
+    const oldOrder = await db.order.create({
+      data: {
+        productId: testProduct.id,
+        customerName: 'Expired Repeat Test',
+        customerEmail: email,
+        amountInr: 499,
+        status: 'paid',
+        downloadTokenHash: hashToken(`expired-repeat-test-${crypto.randomUUID()}`),
+        tokenExpiresAt: new Date(Date.now() - 60 * 1000),
+        gateway: 'razorpay',
+        currency: 'INR',
+        amountMinor: 49900,
+      },
+    })
+    await trackOrder(oldOrder.id)
+    const result = await createCheckout({
+      productId: testProduct.id,
+      customerName: 'Expired Repeat Test',
+      customerEmail: email,
+      country: 'IN',
+      consent: true,
+    }, { serverCountry: 'IN', ipCountry: null, visitorCookie: null })
+    await trackOrder(result.order.id)
+    expect(result.order.id).not.toBe(oldOrder.id)
+    expect(result.order.status).toBe('pending')
+  })
+
+  test('legacy createOrder blocks repurchase while download access is active', async () => {
+    if (!testProduct) throw new Error('no product')
+
+    const { createOrder } = await import('@/services/order-service')
+    const email = `legacy-active-${crypto.randomUUID()}@sibra.local`
+
+    const oldOrder = await db.order.create({
+      data: {
+        productId: testProduct.id,
+        customerName: 'Legacy Active Test',
+        customerEmail: email,
+        amountInr: 499,
+        status: 'paid',
+        downloadTokenHash: hashToken(`legacy-active-${crypto.randomUUID()}`),
+        tokenExpiresAt: new Date(Date.now() + 60 * 60 * 1000),
+        gateway: 'razorpay',
+        currency: 'INR',
+        amountMinor: 49900,
+      },
+    })
+    await trackOrder(oldOrder.id)
+
+    let caught: { code?: string } | null = null
+    try {
+      await createOrder({
+        productId: testProduct.id,
+        customerName: 'Legacy Active Test',
+        customerEmail: email,
+      }, null)
+    } catch (error) {
+      caught = error as { code?: string }
+    }
+
+    expect(caught?.code).toBe('REPEAT_PURCHASE')
+    const orders = await db.order.findMany({ where: { customerEmail: email } })
+    expect(orders).toHaveLength(1)
+  })
+
+  test('legacy createOrder allows repurchase after download access expires', async () => {
+    if (!testProduct) throw new Error('no product')
+
+    const { createOrder } = await import('@/services/order-service')
+    const email = `legacy-expired-${crypto.randomUUID()}@sibra.local`
+
+    const oldOrder = await db.order.create({
+      data: {
+        productId: testProduct.id,
+        customerName: 'Legacy Expired Test',
+        customerEmail: email,
+        amountInr: 499,
+        status: 'paid',
+        downloadTokenHash: hashToken(`legacy-expired-${crypto.randomUUID()}`),
+        tokenExpiresAt: new Date(Date.now() - 60 * 1000),
+        gateway: 'razorpay',
+        currency: 'INR',
+        amountMinor: 49900,
+      },
+    })
+    await trackOrder(oldOrder.id)
+
+    const result = await createOrder({
+      productId: testProduct.id,
+      customerName: 'Legacy Expired Test',
+      customerEmail: email,
+    }, null)
+
+    await trackOrder(result.order.id)
+    expect(result.order.id).not.toBe(oldOrder.id)
+    expect(result.order.status).toBe('pending')
+
+    const orders = await db.order.findMany({ where: { customerEmail: email } })
+    expect(orders).toHaveLength(2)
+  })
+})
+
+describe('watch repeat-purchase access state', () => {
+  test('active non-preview watch access blocks a repeat purchase', async () => {
+    const fixture = await createWatchRepeatPurchaseFixture('active')
+    expect(await checkWatchRepeatPurchase(fixture.productId, fixture.email)).toBe('REPEAT_PURCHASE')
+  })
+
+  test('expired watch access allows a repeat purchase', async () => {
+    const fixture = await createWatchRepeatPurchaseFixture('expired', { expiresAt: new Date(Date.now() - 60 * 1000) })
+    expect(await checkWatchRepeatPurchase(fixture.productId, fixture.email)).toBeNull()
+  })
+
+  test('revoked watch access allows a repeat purchase', async () => {
+    const fixture = await createWatchRepeatPurchaseFixture('revoked', { revokedAt: new Date() })
+    expect(await checkWatchRepeatPurchase(fixture.productId, fixture.email)).toBeNull()
+  })
+
+  test('locked watch access allows a repeat purchase', async () => {
+    const fixture = await createWatchRepeatPurchaseFixture('locked', { lockedAt: new Date() })
+    expect(await checkWatchRepeatPurchase(fixture.productId, fixture.email)).toBeNull()
+  })
+
+  test('admin preview grant does not block a repeat purchase', async () => {
+    const fixture = await createWatchRepeatPurchaseFixture('preview', { preview: true })
+    expect(await checkWatchRepeatPurchase(fixture.productId, fixture.email)).toBeNull()
   })
 })
 

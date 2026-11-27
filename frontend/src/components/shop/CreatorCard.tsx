@@ -205,11 +205,13 @@ export function CreatorCard({
     else if (visibleRef.current) safePlay(v)
   }, [flipped, isVideo])
 
-  const navigationStartedRef = useRef(false)
+  const navigationAttemptAtRef = useRef(0)
 
   const open = () => {
-    if (navigationStartedRef.current) return
-    navigationStartedRef.current = true
+    // Suppress only an immediate double-click. A permanent latch can make
+    // the card unusable if a client-side route transition is interrupted.
+    if (Date.now() - navigationAttemptAtRef.current < 300) return
+    navigationAttemptAtRef.current = Date.now()
     // Keep navigation inside Next on real routes and inside the hash router
     // on the SPA. Avoid a full document reload for every product-card tap.
     playFx('flip')
