@@ -26,6 +26,7 @@ import { siteUrl } from '@/lib/site-url'
 import { realCategoryPath, realProductPath, realShopPath } from '@/lib/real-routes'
 import { hydrateCategories, useZoneCategories } from '@/lib/categories'
 import { playFx } from '@/lib/sound-fx'
+import { track } from '@/lib/track'
 import VideoPlayerFrame from '@/components/shop/VideoPlayerFrame'
 import { ProductReviews } from '@/components/shop/ProductReviews'
 import { productMediaImages, imgFallbackToHq } from '@/lib/video-thumb'
@@ -124,8 +125,10 @@ export function ProductDetailView({
 
   // T10: shared single fetch for the category registry
   useEffect(() => {
-    void hydrateCategories()
-  }, [])
+    // Real product routes already receive the category label from the
+    // server-rendered seed. Keep the client registry fetch for the hash SPA.
+    if (!initial?.product) void hydrateCategories()
+  }, [initial])
 
   useEffect(() => {
     const mq = window.matchMedia('(prefers-reduced-motion: reduce)')
@@ -136,6 +139,20 @@ export function ProductDetailView({
   }, [])
 
   useEffect(() => {
+    // The server-side product seed avoids the duplicate browser product GET,
+    // but that GET also issued the visitor cookie and recorded product_view.
+    // Preserve both client-side effects through the existing analytics beacon.
+    if (initial?.slug !== slug || !initial.product || reload !== 0) return
+    track('product_view', { productId: initial.product.id, zone: initial.product.zone })
+  }, [initial?.slug, initial?.product?.id, initial?.product?.zone, slug, reload])
+
+  useEffect(() => {
+    // /product/[slug] is already fetched on the server and passed in as
+    // `initial`. Re-fetching here caused a duplicate product request followed
+    // by a second, sequential related-products request on every real route.
+    // The hash SPA has no seed and keeps its existing client fetch path.
+    if (initial?.slug === slug && initial.product && reload === 0) return
+
     const ac = new AbortController()
 
     fetch(`/api/products?slug=${encodeURIComponent(slug)}`, { signal: ac.signal })
@@ -176,7 +193,7 @@ export function ProductDetailView({
       })
 
     return () => ac.abort()
-  }, [slug, reload])
+  }, [slug, reload, initial])
 
   const loading = data.slug !== slug || (!data.product && !data.notFound && !data.error)
 

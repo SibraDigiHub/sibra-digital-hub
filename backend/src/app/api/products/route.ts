@@ -1,10 +1,11 @@
 // GET  /api/products — public catalog (published) + admin (status=all)
 // POST /api/products — admin create
-import { NextRequest, NextResponse } from 'next/server'
+import { after, NextRequest, NextResponse } from 'next/server'
 import { asHandler, cachedJson, json, parseBody, parseQuery } from '@/lib/api'
 import { hasAdminSessionCookie } from '@/lib/admin-auth'
 import { requireAdmin } from '@/lib/auth/session'
 import { ensureVisitorId, eventContext, logEvent } from '@/lib/activity'
+import { shouldTrackProductView } from '@/lib/product-view-tracking'
 import { writeAudit } from '@/lib/audit'
 import { notifyFrontendRevalidate } from '@/services/frontend-revalidation'
 import { productRepo } from '@/repositories/product-repo'
@@ -25,7 +26,7 @@ export const GET = asHandler(async (req: NextRequest) => {
       product: product ?? null,
       products: product ? [product] : [],
     }
-    if (product) {
+    if (product && shouldTrackProductView(req.headers)) {
       // Anonymous product-view event — feeds the admin funnel + customer timeline
       try {
         const ctx = eventContext(req)
@@ -38,16 +39,21 @@ export const GET = asHandler(async (req: NextRequest) => {
           if (cached.status === 200) {
             const cookie = probe.headers.get('set-cookie')
             if (cookie) cached.headers.append('set-cookie', cookie)
-            await logEvent({
-              type: 'product_view',
-              productId: product.id,
-              zone: product.zone,
-              visitorId,
-              path: ctx.path,
-              referrer: ctx.referrer,
-              country: ctx.country,
-              device: ctx.device,
-            })
+            // Analytics is best-effort and must not add a database round-trip
+            // to the customer-facing product response. Next's after() keeps
+            // the write alive after the response has been sent.
+            after(() =>
+              logEvent({
+                type: 'product_view',
+                productId: product.id,
+                zone: product.zone,
+                visitorId,
+                path: ctx.path,
+                referrer: ctx.referrer,
+                country: ctx.country,
+                device: ctx.device,
+              }),
+            )
           }
           return cached
         }
