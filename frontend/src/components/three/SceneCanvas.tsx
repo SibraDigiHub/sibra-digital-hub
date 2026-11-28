@@ -17,6 +17,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { Canvas, useFrame, advance } from '@react-three/fiber'
 import * as THREE from 'three'
 import { useAppStore } from '@/store/app-store'
+import { resolveSceneMood } from '@/lib/scene-mood'
 
 const KIDS_A = new THREE.Color('#FFB347')
 const KIDS_B = new THREE.Color('#FCE5CD')
@@ -183,9 +184,14 @@ function MoodScene({ mood, thermal }: { mood: number; thermal: React.RefObject<n
 }
 
 export default function SceneCanvas() {
-  const mood = useAppStore((s) => s.canvasMood)
+  const previewMood = useAppStore((s) => s.canvasMood)
   const scenePaused = useAppStore((s) => s.scenePaused)
   const view = useAppStore((s) => s.view)
+  const zone = useAppStore((s) => s.zone)
+  // Once a real zone is active, its route state is authoritative.
+  // canvasMood remains a gateway-only hover preview and must never let
+  // the previous world's background leak into the selected shop.
+  const mood = resolveSceneMood(view, zone, previewMood)
   const [mode, setMode] = useState<'css' | 'webgl'>('css')
   const [mobile, setMobile] = useState(false)
   const [hidden, setHidden] = useState(false)
