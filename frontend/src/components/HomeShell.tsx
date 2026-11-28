@@ -182,6 +182,9 @@ export default function Home() {
 
   const showChrome =
     view !== 'gateway' && view !== 'admin' && view !== 'admin-reset' && view !== 'watch'
+  // The ambient WebGL scene is fully covered in these secure/admin views.
+  // Do not load or keep its Three.js chunk mounted when it cannot be seen.
+  const showScene = sceneReady && view !== 'admin' && view !== 'admin-reset' && view !== 'watch'
   // T-V: the watch page is a standalone secured view — no navbar/ticker/footer,
   // no zone sky, dark scrim only. Nothing else on the site changes.
   const isWatch = view === 'watch'
@@ -198,7 +201,7 @@ export default function Home() {
       />
 
       {/* Persistent WebGL mood scene (fallback-aware) */}
-      {sceneReady && <SceneCanvas />}
+      {showScene && <SceneCanvas />}
 
       {/* Kids Zone floating 3D sky (kids shop/product only) */}
       {(view === 'shop' || view === 'product') && zone === 'kids' && <KidsSkyDecor />}

@@ -14,6 +14,7 @@ import { parseProduct, useAppStore } from '@/store/app-store'
 import { realProductPath } from '@/lib/real-routes'
 import type { Product, ProductRow, RatingSummary, Zone } from '@/types/marketplace'
 import { hydrateCategories, useZoneCategories } from '@/lib/categories'
+import { catalogSeedRouteState } from '@/lib/catalog-seed-state'
 import { playFx } from '@/lib/sound-fx'
 import { useToast } from '@/hooks/use-toast'
 import { cn } from '@/lib/utils'
@@ -93,17 +94,23 @@ export function CatalogEngine({ initial }: { initial?: CatalogInitialData }) {
   const storeCategory = useAppStore((s) => s.category)
   const storeSearch = useAppStore((s) => s.search)
   const storeSort = useAppStore((s) => s.sort)
+  const storeHydrated = useAppStore((s) => s.hydrated)
+  const seedRoute = storeHydrated ? null : catalogSeedRouteState(initial?.key)
 
   // Committed filter state lives in the SPA store (it IS route state):
   // zone/category/search/sort derive straight from it, so the hash, the
   // grid and browser back/forward can never drift apart. The only local
   // state is the raw search-box buffer (committed on a 350ms debounce).
-  const zone: Zone = storeZone ?? 'kids'
-  const category = storeCategory
-  const search = storeSearch
-  const sort = storeSort
+  // On a direct real-route request the store is intentionally untouched on
+  // the server. Use the server seed's route key until RealRouteShell hydrates
+  // the store, so Creator/category/search routes render their seeded grid in
+  // the first HTML instead of a false loading skeleton.
+  const zone: Zone = seedRoute?.zone ?? storeZone ?? 'kids'
+  const category = seedRoute ? seedRoute.category : storeCategory
+  const search = seedRoute ? seedRoute.search : storeSearch
+  const sort = seedRoute ? seedRoute.sort : storeSort
 
-  const [searchInput, setSearchInput] = useState(storeSearch)
+  const [searchInput, setSearchInput] = useState(search)
   const [reload, setReload] = useState(0)
 
   const [data, setData] = useState<CatalogState>(
@@ -219,6 +226,21 @@ export function CatalogEngine({ initial }: { initial?: CatalogInitialData }) {
   }
 
   useEffect(() => {
+    // Real /shop and /category routes arrive with a server-fetched catalog.
+    // Reuse that seed on first mount instead of immediately issuing the same
+    // uncached browser request again. Hash-SPA navigation and explicit
+    // filter/retry changes still use the client fetch below.
+    if (initial?.key === requestKey) {
+      // A real-route RSC navigation can reuse this component instance. Adopt
+      // the new server seed when its key catches up with the store state.
+      setData((current) =>
+        current.key === initial.key && current.products === initial.products
+          ? current
+          : { key: initial.key, products: initial.products, error: false },
+      )
+      return
+    }
+
     const ac = new AbortController()
     const requestedZone = zone
     const params = new URLSearchParams({ zone: requestedZone, sort, limit: '60' })
@@ -254,7 +276,7 @@ export function CatalogEngine({ initial }: { initial?: CatalogInitialData }) {
         toast({ title: 'Could not load treasures', description: 'The catalog failed to load. Try again in a moment.' })
       })
     return () => ac.abort()
-  }, [requestKey, zone, category, search, sort, toast])
+  }, [requestKey, zone, category, search, sort, toast, initial])
 
   const applyZone = (z: Zone) => {
     if (z === zone) return

@@ -151,14 +151,16 @@ describe('previously-unwrapped routes keep their exact response shapes', () => {
     expect(res.headers.get('cache-control')).toContain('no-store')
   })
 
-  test('GET /api/imagekit/auth — unconfigured 501 {fallback:true} golden shape (or 200 when configured)', async () => {
+  test('GET /api/imagekit/auth — unconfigured 501 fallback or configured 401 without admin session', async () => {
     const res = await api('/api/imagekit/auth')
     if (res.status === 501) {
       expect(res.body.fallback).toBe(true)
       expect(typeof res.body.error).toBe('string')
     } else {
-      expect(res.status).toBe(200)
-      expect(typeof res.body.token).toBe('string')
+      // This contract request has only the internal key, never an admin
+      // session. When ImageKit is configured, signing params are admin-only.
+      expect(res.status).toBe(401)
+      expect(typeof res.body.error).toBe('string')
     }
     expectFunnelHeaders(res.headers)
   })

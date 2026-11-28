@@ -20,6 +20,7 @@ import { clampTotal } from './core/timeline'
 import { hasZoneSkipHandler, zoneSkipRef } from './core/skip-registry'
 import { useZoneRunStore, type ZoneTransitionRunData } from './core/run-store'
 import { resumeScoreContext } from './audio/engine'
+import { resolveGatewaySkipZone } from './core/skip-zone'
 
 export type { Zone } from './config/constants'
 export type { ZoneTransitionRunData } from './core/run-store'
@@ -116,21 +117,17 @@ export function useZoneTransition(): ZoneTransitionControls {
         // The lazy ZoneStage chunk/effect is not ready yet. Complete the
         // selected zone directly rather than falling back to a stale
         // localStorage zone from a previous visit.
-        app.enterZone(run.zone)
+        app.enterZone(resolveGatewaySkipZone(run.zone))
         useZoneRunStore.getState().setRun(null)
         app.setScenePaused(false)
       }
       return
     }
 
-    // Gateway Skip (no animation selected): use the saved zone if present.
-    let zone: Zone = 'kids'
-    try {
-      if (window.localStorage.getItem('sdh_zone') === 'creator') zone = 'creator'
-    } catch {
-      /* private mode */
-    }
-    useAppStore.getState().enterZone(zone)
+    // Gateway Skip without a card click always defaults to Kids.
+    // Hover only changes the ambient canvas mood; a previous visit's saved
+    // zone is not a selection for this gateway session.
+    useAppStore.getState().enterZone(resolveGatewaySkipZone(null))
   }, [])
 
   // Idle prefetch after the gateway paints — keeps the click instant and

@@ -14,6 +14,7 @@
 
 import { useCallback, useEffect, useState } from 'react'
 import Image from 'next/image'
+import dynamic from 'next/dynamic'
 import {
   Activity,
   ArrowLeft,
@@ -40,20 +41,29 @@ import {
   type AdminSessionInfo,
 } from '@/lib/admin-api'
 
-import Admin2FA from '@/components/admin/Admin2FA'
-import AdminActivity from '@/components/admin/AdminActivity'
-import AdminCategories from '@/components/admin/AdminCategories'
-import AdminChannels from '@/components/admin/AdminChannels'
-import AdminCustomers from '@/components/admin/AdminCustomers'
-import AdminDashboard from '@/components/admin/AdminDashboard'
-import AdminEnroll from '@/components/admin/AdminEnroll'
-import AdminLogin from '@/components/admin/AdminLogin'
-import AdminOrders from '@/components/admin/AdminOrders'
-import AdminProducts from '@/components/admin/AdminProducts'
-import AdminReviews from '@/components/admin/AdminReviews'
-import AdminSettings from '@/components/admin/AdminSettings'
-import AdminSystem from '@/components/admin/AdminSystem'
-import ProductForm from '@/components/admin/ProductForm'
+// Split the control-room sections into on-demand chunks. Previously every
+// admin screen (including ProductForm, charts and tables) was pulled into the
+// first AdminApp client bundle even though only one tab is visible at a time.
+const AdminChunkLoading = () => (
+  <div className="flex min-h-[220px] items-center justify-center text-[#9AA89E]">
+    <Loader2 className="size-6 animate-spin text-[#E5B842]" aria-label="Loading admin section" />
+  </div>
+)
+
+const Admin2FA = dynamic(() => import('@/components/admin/Admin2FA'), { loading: AdminChunkLoading })
+const AdminActivity = dynamic(() => import('@/components/admin/AdminActivity'), { loading: AdminChunkLoading })
+const AdminCategories = dynamic(() => import('@/components/admin/AdminCategories'), { loading: AdminChunkLoading })
+const AdminChannels = dynamic(() => import('@/components/admin/AdminChannels'), { loading: AdminChunkLoading })
+const AdminCustomers = dynamic(() => import('@/components/admin/AdminCustomers'), { loading: AdminChunkLoading })
+const AdminDashboard = dynamic(() => import('@/components/admin/AdminDashboard'), { loading: AdminChunkLoading })
+const AdminEnroll = dynamic(() => import('@/components/admin/AdminEnroll'), { loading: AdminChunkLoading })
+const AdminLogin = dynamic(() => import('@/components/admin/AdminLogin'), { loading: AdminChunkLoading })
+const AdminOrders = dynamic(() => import('@/components/admin/AdminOrders'), { loading: AdminChunkLoading })
+const AdminProducts = dynamic(() => import('@/components/admin/AdminProducts'), { loading: AdminChunkLoading })
+const AdminReviews = dynamic(() => import('@/components/admin/AdminReviews'), { loading: AdminChunkLoading })
+const AdminSettings = dynamic(() => import('@/components/admin/AdminSettings'), { loading: AdminChunkLoading })
+const AdminSystem = dynamic(() => import('@/components/admin/AdminSystem'), { loading: AdminChunkLoading })
+const ProductForm = dynamic(() => import('@/components/admin/ProductForm'), { loading: AdminChunkLoading })
 
 export type AdminTab =
   | 'dashboard'

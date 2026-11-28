@@ -72,6 +72,12 @@ async function main(): Promise<void> {
   const unit = run('test:payments:unit', ['bun', 'test', 'tests/payments/unit.test.ts'], BE)
   push('payments unit tests', unit.code === 0, unit.code === 0 ? 'passed' : unit.out.slice(0, 150), unit.ms)
 
+  const frontendUnit = run('test:frontend:unit', ['bun', 'test'], FE)
+  push('frontend unit tests', frontendUnit.code === 0, frontendUnit.code === 0 ? 'passed' : frontendUnit.out.slice(0, 200), frontendUnit.ms)
+
+  const trackingUnit = run('test:product-view-tracking', ['bun', 'test', 'tests/routes/product-view-tracking.test.ts'], BE)
+  push('product-view tracking tests', trackingUnit.code === 0, trackingUnit.code === 0 ? 'passed' : trackingUnit.out.slice(0, 200), trackingUnit.ms)
+
   const copy = run('check-copy-claims', ['bun', 'scripts/check-copy-claims.ts'], FE)
   push('copy-claims', copy.code === 0, copy.code === 0 ? 'no forbidden or inconsistent claims' : copy.out.slice(0, 300), copy.ms)
 

@@ -99,7 +99,7 @@ export function formatMoney(minor: number, currency: string): string {
   const exponent = Math.round(Math.log10(factor))
   const safeMinor = Number.isFinite(minor) ? Math.round(minor) : 0
   const major = safeMinor / factor
-  const amount = major.toLocaleString('en-IN', { minimumFractionDigits: 0, maximumFractionDigits: exponent })
+  const amount = major.toLocaleString('en-IN', { minimumFractionDigits: exponent, maximumFractionDigits: exponent })
   const symbol = CURRENCY_SYMBOLS[currency]
   return symbol ? `${symbol}${amount}` : `${currency} ${amount}`
 }

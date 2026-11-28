@@ -198,3 +198,6 @@ patch-files/
 # Local Vercel configuration backups
 backend/vercel.json.backup
 backend/vercel.json.pre-cron
+
+# Private local backups (never deploy or publish)
+/private-backups/

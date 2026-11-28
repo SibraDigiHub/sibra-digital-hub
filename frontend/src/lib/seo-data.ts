@@ -28,12 +28,14 @@ function backendBase(): string {
   return (env.BACKEND_URL ?? 'http://localhost:3001').replace(/\/+$/, '')
 }
 
-async function backendGet<T>(path: string): Promise<T | null> {
+async function backendGet<T>(path: string, options: { serverRenderProduct?: boolean } = {}): Promise<T | null> {
   const env = feEnv()
   const key = env.INTERNAL_API_KEY
   try {
+    const headers = new Headers(key ? { 'x-internal-key': key } : undefined)
+    if (options.serverRenderProduct) headers.set('x-sdh-server-render', '1')
     const res = await fetch(`${backendBase()}${path}`, {
-      headers: key ? { 'x-internal-key': key } : undefined,
+      headers,
       next: { revalidate: REVALIDATE_SECONDS, tags: [REAL_ROUTES_TAG] },
     })
     if (!res.ok) return null
@@ -62,6 +64,7 @@ export interface ProductList {
 export async function getProductBySlug(slug: string): Promise<Product | null> {
   const data = await backendGet<{ products: ProductRow[] }>(
     `/api/products?slug=${encodeURIComponent(slug)}`,
+    { serverRenderProduct: true },
   )
   const row = data?.products?.[0]
   return row ? toProduct(row) : null
