@@ -35,6 +35,8 @@ export function proxy(req: NextRequest) {
 
   const headers = new Headers(req.headers)
   headers.set('x-internal-key', internalApiKey())
+  // Browser callers cannot spoof the server-render-only analytics bypass.
+  headers.set('x-sdh-server-render', '0')
   // Client IP for the backend's rate limiting / audit hashing. The FIRST
   // XFF hop is client-forgeable (any browser can send `x-forwarded-for`),
   // so take the LAST hop — the one OUR edge appended — or the platform's
